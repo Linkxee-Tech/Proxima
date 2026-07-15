@@ -1,0 +1,2 @@
+'use client';
+export default function MagicInput({ value, onChange, onSubmit, busy = false }) { return <form className="goal-form" onSubmit={onSubmit}><label className="field"><span>Your goal</span><textarea rows={4} value={value} onChange={(event) => onChange(event.target.value)} placeholder="Launch our v2 on all social channels" /></label><button className="primary" disabled={busy} type="submit">🚀 Deploy</button></form>; }

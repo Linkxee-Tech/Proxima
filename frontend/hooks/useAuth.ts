@@ -1,0 +1,4 @@
+'use client';
+import { useEffect, useState } from 'react';
+import { apiFetch } from '../lib/proxima-api';
+export function useAuth() { const [user,setUser]=useState<any>(null);useEffect(()=>{apiFetch('/api/auth/me').then((r)=>setUser(r.user)).catch(()=>setUser(null));},[]);return {user,login:async(email:string,password:string)=>{const r=await apiFetch('/api/auth/login',{method:'POST',body:JSON.stringify({email,password})});localStorage.setItem('proxima_token',r.token);localStorage.setItem('proxima_refresh_token',r.refreshToken);setUser(r.user);return r;},logout:async()=>{const refreshToken=localStorage.getItem('proxima_refresh_token');if(refreshToken) await apiFetch('/api/auth/logout',{method:'POST',body:JSON.stringify({refreshToken})});localStorage.removeItem('proxima_token');localStorage.removeItem('proxima_refresh_token');setUser(null);}}; }

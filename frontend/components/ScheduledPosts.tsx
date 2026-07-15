@@ -1,0 +1,3 @@
+'use client';
+export type ScheduledPost = { id:string; scheduledFor?:string; scheduled_for?:string; platforms?:string[]; status:string };
+export default function ScheduledPosts({ posts, onCancel }: { posts:ScheduledPost[]; onCancel:(id:string)=>void }) { return <section className="resource-list" aria-label="Scheduled posts">{posts.length ? posts.map((post)=><article className="resource-card" key={post.id}><strong>{post.platforms?.join(', ') || 'Social campaign'}</strong><span className="muted">{post.scheduledFor || post.scheduled_for || 'Awaiting approval'} · {post.status}</span><button className="secondary" onClick={()=>onCancel(post.id)}>Cancel</button></article>) : <p className="details-empty compact">No scheduled posts.</p>}</section>; }

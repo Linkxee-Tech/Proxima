@@ -1,0 +1,1 @@
+export function RadioGroup({name,value,options,onChange}:{name:string;value:string;options:{value:string;label:string}[];onChange:(value:string)=>void}){return <fieldset>{options.map(option=><label key={option.value}><input type="radio" name={name} checked={value===option.value} onChange={()=>onChange(option.value)}/>{option.label}</label>)}</fieldset>}

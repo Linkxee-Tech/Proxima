@@ -1,0 +1,1 @@
+export function Avatar({name,src}:{name:string;src?:string}){return src?<img className="avatar" src={src} alt={name}/>:<span className="avatar" aria-label={name}>{name.split(' ').map(p=>p[0]).join('').slice(0,2)}</span>}

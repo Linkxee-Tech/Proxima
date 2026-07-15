@@ -1,0 +1,2 @@
+import type { ReactNode } from 'react';
+export function Tabs({tabs,value,onChange,children}:{tabs:string[];value:string;onChange:(value:string)=>void;children:ReactNode}){return <section><div role="tablist" className="action-row">{tabs.map(tab=><button key={tab} role="tab" aria-selected={tab===value} className={tab===value?'primary':'ghost'} onClick={()=>onChange(tab)}>{tab}</button>)}</div>{children}</section>}

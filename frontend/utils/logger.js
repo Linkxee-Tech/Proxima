@@ -1,0 +1,1 @@
+export function formatLog(event) { const message = event?.message || event?.type || 'System event'; const prefix = /codex/i.test(message) ? '🦾' : /kernel|intent/i.test(message) ? '⚡' : '•'; return `${prefix} ${message}`; }

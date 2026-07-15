@@ -1,0 +1,1 @@
+"""Proxima FastAPI backend."""

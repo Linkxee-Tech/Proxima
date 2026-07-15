@@ -1,0 +1,2 @@
+import type { ButtonHTMLAttributes, ReactNode } from 'react';
+export function Button({variant='default',size='md',loading,children,className='',...props}:{variant?:'default'|'destructive'|'outline'|'secondary'|'ghost'|'link';size?:'sm'|'md'|'lg'|'xl';loading?:boolean;children:ReactNode}&ButtonHTMLAttributes<HTMLButtonElement>){return <button {...props} disabled={loading||props.disabled} className={`button button-${variant} button-${size} ${className}`}>{loading?'Loading…':children}</button>}

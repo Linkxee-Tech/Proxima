@@ -1,0 +1,23 @@
+# Secrets and local runtime data
+.env
+backend/.env
+.proxima-data/
+backend/.proxima-data/
+.agents/
+.codex/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# Next.js and Node
+frontend/node_modules/
+frontend/.next/
+frontend/tsconfig.tsbuildinfo
+npm-debug.log*
+
+# Local editor and OS files
+.DS_Store
+Thumbs.db

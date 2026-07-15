@@ -1,0 +1,3 @@
+'use client';
+const icon = { twitter: '🐦', linkedin: '🔗', facebook: '📘', whatsapp: '💬' };
+export default function SocialPostCard({ platform, text, limit, onChange, image }) { return <article className="social-post-card"><div className="social-preview-heading"><span>{icon[platform]}</span><strong>{platform === 'twitter' ? 'Twitter / X' : platform[0].toUpperCase() + platform.slice(1)}</strong><span className={text.length > limit ? 'count-over' : 'muted'}>{text.length}/{limit}</span></div>{image ? <img src={image.url} alt="Campaign asset" className="social-image-preview" /> : <div className="image-placeholder">No image attached</div>}<textarea value={text} onChange={(event) => onChange(platform, event.target.value)} rows={6} /></article>; }

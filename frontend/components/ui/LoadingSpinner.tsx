@@ -1,0 +1,1 @@
+export default function LoadingSpinner({ size='md', label='Loading' }: { size?:'sm'|'md'|'lg'; label?:string }) { return <span className={`loading-spinner loading-spinner-${size}`} role="status" aria-label={label}>{label}</span>; }

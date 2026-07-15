@@ -1,0 +1,21 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import AuthGate from './AuthGate';
+import Navbar from './Navbar';
+import Sidebar from './Sidebar';
+import { apiFetch } from '../lib/proxima-api';
+
+function Settings() {
+  const [connections, setConnections] = useState([]);
+  const [metrics, setMetrics] = useState(null);
+  const [message, setMessage] = useState('');
+  const [theme, setTheme] = useState('dark');
+  const load = () => Promise.all([apiFetch('/api/integrations'), apiFetch('/api/metrics')]).then(([integrations, usage]) => { setConnections(integrations.items); setMetrics(usage); }).catch((err) => setMessage(err.message));
+  useEffect(() => { load(); const savedTheme = window.localStorage.getItem('proxima_theme') || 'dark'; setTheme(savedTheme); document.documentElement.dataset.theme = savedTheme; const params = new URLSearchParams(window.location.search); setMessage(params.get('connected') ? `${params.get('connected')} connected successfully.` : params.get('error') || ''); }, []);
+  const toggleTheme = () => { const next = theme === 'dark' ? 'light' : 'dark'; setTheme(next); window.localStorage.setItem('proxima_theme', next); document.documentElement.dataset.theme = next; };
+  const connect = async (tool) => { try { window.location.assign((await apiFetch(`/api/integrations/${tool}/connect`, { method: 'POST', body: '{}' })).authorizationUrl); } catch (err) { setMessage(err.message); } };
+  const disconnect = async (tool) => { try { await apiFetch(`/api/integrations/${tool}`, { method: 'DELETE' }); await load(); } catch (err) { setMessage(err.message); } };
+  return <><div className="bg-grid" /><main className="shell"><Navbar title="Settings" /><div className="workspace-page"><Sidebar /><section className="panel page-content"><div className="settings-heading"><div><p className="eyebrow">Connections</p><h1>Tool registry</h1></div><button className="secondary" onClick={toggleTheme}>Use {theme === 'dark' ? 'light' : 'dark'} mode</button></div><p className="lede">OAuth tokens are encrypted on the backend. Connection only succeeds once the provider credentials and callback URL are configured.</p>{message ? <p className="connection-message">{message}</p> : null}<div className="usage-grid">{[['Workflows', metrics?.total], ['Running', metrics?.running], ['Awaiting approval', metrics?.waitingApproval], ['Completed', metrics?.completed]].map(([label, value]) => <div className="detail-metric" key={label}><span className="metric-label">{label}</span><strong className="metric-value">{value ?? 0}</strong></div>)}</div><div className="connection-grid">{connections.map((item) => <article className="connection-card" key={item.name}><div><strong>{item.label}</strong><p className={item.connected ? 'connected' : 'muted'}>{item.connected ? 'Connected' : item.configured ? 'Ready to connect' : 'Credentials required'}</p></div><div className="action-row">{item.connected ? <button className="secondary" onClick={() => disconnect(item.name)}>Disconnect</button> : <button className="primary" disabled={!item.configured} onClick={() => connect(item.name)}>Connect OAuth</button>}</div></article>)}</div></section></div></main></>;
+}
+export default function SettingsPanel() { return <AuthGate><Settings /></AuthGate>; }

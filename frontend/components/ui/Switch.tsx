@@ -1,0 +1,1 @@
+export function Switch({checked,onChange,label}:{checked:boolean;onChange:(checked:boolean)=>void;label:string}){return <label><input type="checkbox" role="switch" checked={checked} onChange={e=>onChange(e.target.checked)}/>{label}</label>}

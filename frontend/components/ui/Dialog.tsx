@@ -1,0 +1,2 @@
+import type { ReactNode } from 'react';
+export function Dialog({open,onClose,children}:{open:boolean;onClose:()=>void;children:ReactNode}){return open?<div className="modal-backdrop" role="presentation" onMouseDown={onClose}><div className="modal-card panel" role="dialog" aria-modal="true" onMouseDown={e=>e.stopPropagation()}><button className="ghost" aria-label="Close dialog" onClick={onClose}>Close</button>{children}</div></div>:null}
