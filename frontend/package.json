@@ -15,7 +15,7 @@
     "@xyflow/react": "^12.11.2",
     "axios": "^1.6.8",
     "dagre": "^0.8.5",
-    "next": "^9.3.3",
+    "next": "^15.5.20",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "socket.io-client": "^4.7.5",
