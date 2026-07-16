@@ -2,7 +2,7 @@ import json
 import ssl
 from pathlib import Path
 from threading import RLock
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 from uuid import uuid4
 
 from .config import settings
@@ -34,6 +34,14 @@ class Store:
         parsed = urlparse(settings.proxima_database_url)
         if not parsed.hostname or not parsed.username or not parsed.path:
             raise RuntimeError("PROXIMA_DATABASE_URL must be a valid PostgreSQL connection URI.")
+        ssl_context = ssl.create_default_context()
+        ssl_mode = parse_qs(parsed.query).get("sslmode", [""])[0].lower()
+        if ssl_mode == "require":
+            # `require` means encrypt the transport without validating the server
+            # certificate, matching PostgreSQL/libpq semantics. Supavisor's pooler
+            # may present a certificate chain that is not in the local trust store.
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
         self.connection = pg8000.dbapi.connect(
             user=unquote(parsed.username),
             password=unquote(parsed.password or ""),
