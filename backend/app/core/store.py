@@ -51,16 +51,22 @@ class Store:
             ssl_context=ssl_context,
         )
         self.connection.autocommit = True
-        with self.connection.cursor() as cursor:
+        cursor = self.connection.cursor()
+        try:
             cursor.execute(
                 "CREATE TABLE IF NOT EXISTS proxima_state (id SMALLINT PRIMARY KEY, state JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())"
             )
+        finally:
+            cursor.close()
 
     def _load(self) -> dict:
         if self.connection:
-            with self.connection.cursor() as cursor:
+            cursor = self.connection.cursor()
+            try:
                 cursor.execute("SELECT state FROM proxima_state WHERE id = 1")
                 row = cursor.fetchone()
+            finally:
+                cursor.close()
             state = row[0] if row else {}
             if isinstance(state, str):
                 state = json.loads(state)
@@ -74,11 +80,14 @@ class Store:
     def save(self) -> None:
         with self.lock:
             if self.connection:
-                with self.connection.cursor() as cursor:
+                cursor = self.connection.cursor()
+                try:
                     cursor.execute(
                         "INSERT INTO proxima_state (id, state, updated_at) VALUES (1, %s, NOW()) ON CONFLICT (id) DO UPDATE SET state = EXCLUDED.state, updated_at = NOW()",
                         (json.dumps(self.data),),
                     )
+                finally:
+                    cursor.close()
                 return
             self.path.parent.mkdir(parents=True, exist_ok=True)
             temporary = self.path.with_suffix(".tmp")
