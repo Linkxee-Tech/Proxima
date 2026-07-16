@@ -27,11 +27,21 @@ def headers() -> dict[str, str]:
 
 
 def test_health_and_core_discovery() -> None:
+    assert client.get("/health").status_code == 200
     assert client.get("/api/v1/health").status_code == 200
     tools = client.get("/api/v1/tools", headers=headers()).json()["items"]
     assert len(tools) == 8
     assert next(item for item in tools if item["name"] == "whatsapp")["connectionRequired"] is False
     assert client.get("/api/v1/metrics", headers=headers()).status_code == 200
+
+
+def test_root_swagger_aliases_reach_the_api_schema() -> None:
+    docs = client.get("/docs", follow_redirects=True)
+    schema = client.get("/openapi.json", follow_redirects=True)
+    assert docs.status_code == 200
+    assert "Swagger UI" in docs.text
+    assert schema.status_code == 200
+    assert "/health" in schema.json()["paths"]
 
 
 def test_local_frontend_cors_preflight_is_allowed() -> None:
