@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import Sidebar from './Sidebar';
 import ApprovalModal from './ApprovalModal';
 import DAGVisualizer from './DAGVisualizer';
@@ -62,6 +63,7 @@ function GoalUnderstanding({ intent, goal, tasks = [], approvalNeeded = false, d
 
 function DashboardShell() {
   const { pushToast } = useToast();
+  const router = useRouter();
   const [workflows, setWorkflows] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [selectedNode, setSelectedNode] = useState(null);
@@ -74,6 +76,7 @@ function DashboardShell() {
   const [error, setError] = useState(null);
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const lastErrorRef = useRef('');
   const sidebarRef = useRef(null);
   const navToggleRef = useRef(null);
@@ -158,6 +161,10 @@ function DashboardShell() {
     connect();
     return () => { stopped = true; clearTimeout(reconnectTimer); socket?.close(); };
   }, [loadDashboard]);
+
+  useEffect(() => {
+    setIsAuthenticated(Boolean(window.localStorage.getItem('proxima_token')));
+  }, []);
 
   useEffect(() => {
     if (!workflows.length) {
@@ -283,6 +290,25 @@ function DashboardShell() {
     pushToast('Sample loaded into the composer.', 'info');
   };
 
+  const handleLogout = async () => {
+    const refreshToken = window.localStorage.getItem('proxima_refresh_token');
+    try {
+      if (refreshToken) {
+        await fetch('/api/auth/logout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        });
+      }
+    } finally {
+      window.localStorage.removeItem('proxima_token');
+      window.localStorage.removeItem('proxima_refresh_token');
+      setIsAuthenticated(false);
+      router.replace('/login');
+      router.refresh();
+    }
+  };
+
   return (
     <>
       <div className="bg-grid" />
@@ -321,6 +347,12 @@ function DashboardShell() {
           <button type="button" className="secondary" onClick={() => loadDashboard(true)}>
             Refresh
           </button>
+          {isAuthenticated ? (
+            <button type="button" className="logout-button" onClick={handleLogout} aria-label="Log out of Proxima">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5H5v14h5M14 8l4 4-4 4M18 12H9" /></svg>
+              Log out
+            </button>
+          ) : null}
         </div>
       </header>
 

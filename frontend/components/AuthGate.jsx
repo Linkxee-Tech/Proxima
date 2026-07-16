@@ -24,6 +24,7 @@ export default function AuthGate({ children, forcePrompt = false }) {
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Unable to authenticate.');
       window.localStorage.setItem('proxima_token', payload.token);
+      if (payload.refreshToken) window.localStorage.setItem('proxima_refresh_token', payload.refreshToken);
       setState({ loading: false, error: '', mode: 'login' });
     } catch (error) { setState((current) => ({ ...current, error: error.message })); }
   };
