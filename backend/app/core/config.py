@@ -26,6 +26,28 @@ class Settings(BaseSettings):
     proxima_frontend_callback_url: str = "http://localhost:3001/dashboard/integrations"
     proxima_oauth_state_ttl_seconds: int = 600
     proxima_rate_limit_per_minute: int = 60
+    google_access_token: str = ""
+    google_calendar_id: str = "primary"
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    slack_webhook_url: str = ""
+    slack_client_id: str = ""
+    slack_client_secret: str = ""
+    notion_client_id: str = ""
+    notion_client_secret: str = ""
+    twitter_client_id: str = ""
+    twitter_client_secret: str = ""
+    linkedin_client_id: str = ""
+    linkedin_client_secret: str = ""
+    facebook_app_id: str = ""
+    facebook_app_secret: str = ""
+    whatsapp_access_token: str = ""
+    whatsapp_phone_number_id: str = ""
+    whatsapp_business_account_id: str = ""
+    proxima_enable_sandbox: bool = False
+    proxima_sandbox_image: str = "node:22-alpine"
+    proxima_sandbox_network: str = "none"
+    proxima_allow_demo_fallback: bool = False
 
 
 settings = Settings()

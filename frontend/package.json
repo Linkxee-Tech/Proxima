@@ -15,16 +15,16 @@
     "@xyflow/react": "^12.11.2",
     "axios": "^1.6.8",
     "dagre": "^0.8.5",
-    "next": "14.2.3",
-    "react": "18.2.0",
-    "react-dom": "18.2.0",
+    "next": "^9.3.3",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "socket.io-client": "^4.7.5",
-    "zustand": "^4.5.2"
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@types/node": "20.17.6",
-    "@types/react": "18.3.3",
-    "@types/react-dom": "18.3.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
     "typescript": "5.8.2"
   }
 }

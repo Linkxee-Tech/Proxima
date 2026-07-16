@@ -37,7 +37,7 @@ The Social Media Hub at `/social` creates platform-specific AI copy, accepts PNG
 
 1. Copy `.env.example` to your environment and configure the services you intend to use. `OPENAI_API_KEY` is required for real planning. Google and Slack actions require their respective credentials.
 
-   For social publishing, configure the platform client credentials plus `PROXIMA_PUBLIC_APP_URL`, `PROXIMA_PUBLIC_API_URL`, and `PROXIMA_TOKEN_ENCRYPTION_KEY`. The OAuth redirect URI is `PROXIMA_PUBLIC_API_URL/api/integrations/{twitter|linkedin|facebook}/callback`.
+   For social publishing, configure the platform client credentials plus `PROXIMA_PUBLIC_APP_URL`, `PROXIMA_PUBLIC_API_URL`, and `PROXIMA_TOKEN_ENCRYPTION_KEY`. The OAuth redirect URI is `PROXIMA_PUBLIC_API_URL/api/v1/tools/{twitter|linkedin|facebook}/callback`. WhatsApp uses its Cloud API token and phone-number ID instead of OAuth.
 
 2. Create a Python 3.11 environment, install the backend, and start FastAPI:
 
@@ -71,6 +71,7 @@ http://localhost:3001
 - Gmail, Calendar, Slack, Pinecone, Redis, Docker, and OpenAI are real adapters, but they cannot perform external work until their credentials/services are configured.
 - Generated code only runs when `PROXIMA_ENABLE_SANDBOX=true`; the container is read-only, drops Linux capabilities, has resource limits, and does not mount this repository.
 - The computer-use adapter intentionally requires an isolated, consented runner. It is not safe to expose arbitrary desktop control from the main API process.
+- For a hosted frontend, set `PROXIMA_API_BASE_URL` to the backend HTTPS URL and `NEXT_PUBLIC_PROXIMA_WS_URL` to its `/ws` WSS URL. Docker Compose supplies local equivalents automatically.
 
 ## Verification
 

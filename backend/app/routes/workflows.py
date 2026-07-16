@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from ..core.store import store
 from ..core.security import current_user
 from ..schemas import GoalRequest, ApprovalRequest
@@ -8,6 +8,10 @@ router = APIRouter(tags=["workflows"])
 SOCIAL = ["twitter", "linkedin", "facebook", "whatsapp"]
 
 def now() -> str: return datetime.now(timezone.utc).isoformat()
+
+
+def artifact(title: str, content: str) -> dict:
+    return {"id": store.id(), "title": title, "type": "text", "extension": "txt", "content": content}
 def owned(workflow_id: str, user_id: str) -> dict:
     workflow = next((item for item in store.data["workflows"] if item["id"] == workflow_id and item["userId"] == user_id), None)
     if not workflow: raise HTTPException(status_code=404, detail="Workflow not found.")
@@ -54,11 +58,12 @@ def social_workflow(goal: str, user_id: str) -> dict:
     identifier = store.id(); drafts = social_drafts(goal); tasks = [{"id":"intent-parse","title":"Intent Parse","kind":"analysis","status":"done","dependsOn":[]},{"id":"draft-core-message","title":"Draft Core Message","kind":"generation","status":"done","dependsOn":["intent-parse"]},{"id":"tailor-per-platform","title":"Tailor per Platform","kind":"generation","status":"done","dependsOn":["draft-core-message"]}]
     for platform in SOCIAL:
         tasks += [{"id":f"approval-{platform}","title":f"Approve: {platform.title()}","kind":"approval","isApprovalGate":True,"status":"waiting_approval","dependsOn":["tailor-per-platform"]},{"id":platform,"title":"Twitter / X" if platform == "twitter" else platform.title(),"kind":"social","status":"pending","dependsOn":[f"approval-{platform}"]}]
-    return {"id":identifier,"userId":user_id,"goalText":goal,"parsed":{"action":"multi_platform_social_publish","summary":"Tailored social publishing awaits approval."},"tasks":tasks,"steps":tasks,"socialDrafts":drafts,"status":"waiting_approval","artifacts":[],"auditTrail":[{"id":store.id(),"at":now(),"level":"info","message":"Social drafts generated; approval required."}],"createdAt":now(),"updatedAt":now()}
+    campaign = "\n\n".join(f"{platform.title()}:\n{text}" for platform, text in drafts.items())
+    return {"id":identifier,"userId":user_id,"goalText":goal,"parsed":{"action":"multi_platform_social_publish","summary":"Tailored social publishing awaits approval."},"tasks":tasks,"steps":tasks,"socialDrafts":drafts,"status":"waiting_approval","artifacts":[artifact("Social campaign drafts", campaign)],"auditTrail":[{"id":store.id(),"at":now(),"level":"info","message":"Social drafts generated; approval required."}],"createdAt":now(),"updatedAt":now()}
 
 @router.post("/workflows", status_code=201)
 def create(payload: GoalRequest, user: dict = Depends(current_user)) -> dict:
-    workflow = social_workflow(payload.goalText, user["id"]) if any(word in payload.goalText.lower() for word in ["social", "twitter", "linkedin", "facebook", "whatsapp"]) else {"id":store.id(),"userId":user["id"],"goalText":payload.goalText,"parsed":{"action":"automation","summary":payload.goalText},"tasks":[],"steps":[],"status":"completed","artifacts":[],"auditTrail":[],"createdAt":now(),"updatedAt":now()}
+    workflow = social_workflow(payload.goalText, user["id"]) if any(word in payload.goalText.lower() for word in ["social", "twitter", "linkedin", "facebook", "whatsapp"]) else {"id":store.id(),"userId":user["id"],"goalText":payload.goalText,"parsed":{"action":"automation","summary":payload.goalText},"tasks":[],"steps":[],"status":"completed","artifacts":[artifact("Workflow summary", payload.goalText)],"auditTrail":[],"createdAt":now(),"updatedAt":now()}
     with store.lock: store.data["workflows"].insert(0, workflow); store.save()
     return workflow
 
@@ -68,6 +73,16 @@ def list_workflows(user: dict = Depends(current_user)) -> dict:
 
 @router.get("/workflows/{workflow_id}")
 def get_workflow(workflow_id: str, user: dict = Depends(current_user)) -> dict: return owned(workflow_id, user["id"])
+
+
+@router.get("/workflows/{workflow_id}/artifacts/{artifact_id}/download")
+def download_artifact(workflow_id: str, artifact_id: str, user: dict = Depends(current_user)) -> Response:
+    workflow = owned(workflow_id, user["id"])
+    item = next((artifact for artifact in workflow.get("artifacts", []) if artifact["id"] == artifact_id), None)
+    if not item:
+        raise HTTPException(status_code=404, detail="Artifact not found.")
+    filename = f"{item['title'].lower().replace(' ', '-')}.{item.get('extension', 'txt')}"
+    return Response(item.get("content", ""), media_type="text/plain; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 @router.post("/workflows/{workflow_id}/approve")
 def approve(workflow_id: str, payload: ApprovalRequest, user: dict = Depends(current_user)) -> dict:

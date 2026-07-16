@@ -1,6 +1,5 @@
 import base64
 import hashlib
-import os
 import secrets
 import time
 from urllib.parse import urlencode
@@ -9,9 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from ..core.crypto import encrypt
+from ..core.config import settings
 from ..core.security import current_user
 from ..core.store import store
-from ..tools.registry import TOOLS, authorization_url, definition
+from ..tools.registry import TOOLS, authorization_url, credential, definition
 
 router = APIRouter(prefix="/tools", tags=["tools"])
 
@@ -29,11 +29,13 @@ def connections(user_id: str) -> list[dict]:
 @router.get("")
 def list_tools(user: dict = Depends(current_user)) -> dict:
     linked = {item["tool"]: item for item in connections(user["id"])}
-    return {"items": [{"name": tool.name, "label": tool.label, "connected": name in linked, "configured": tool.configured(), "scopes": list(tool.scopes), "expiresAt": linked.get(name, {}).get("expiresAt")} for name, tool in TOOLS.items()]}
+    return {"items": [{"name": tool.name, "label": tool.label, "connected": name in linked, "configured": tool.configured(), "connectionRequired": tool.oauth, "scopes": list(tool.scopes), "expiresAt": linked.get(name, {}).get("expiresAt")} for name, tool in TOOLS.items()]}
 
 @router.post("/{tool_name}/connect")
 def connect(tool_name: str, user: dict = Depends(current_user)) -> dict:
     tool = definition(tool_name)
+    if not tool.oauth:
+        raise HTTPException(status_code=409, detail=f"{tool.label} uses server-side credentials and does not have an OAuth connect flow.")
     if not tool.configured():
         raise HTTPException(status_code=503, detail=f"{tool.label} OAuth is not configured. Set {tool.client_id_env} and the provider callback URL first.")
     state = secrets.token_urlsafe(32); verifier = secrets.token_urlsafe(64) if tool.pkce else None
@@ -47,11 +49,11 @@ async def exchange(tool_name: str, code: str, state: str) -> None:
     pending = next((item for item in store.data.setdefault("oauthStates", []) if secrets.compare_digest(item["state"], state) and item["tool"] == tool_name and item["expiresAt"] > time.time()), None)
     if not pending: raise HTTPException(status_code=400, detail="OAuth state is invalid or expired.")
     tool = definition(tool_name)
-    body = {"grant_type": "authorization_code", "code": code, "redirect_uri": f"{os.getenv('PROXIMA_PUBLIC_API_URL', 'http://localhost:8000')}/api/v1/tools/{tool_name}/callback"}
+    body = {"grant_type": "authorization_code", "code": code, "redirect_uri": f"{settings.proxima_public_api_url}/api/v1/tools/{tool_name}/callback"}
     headers: dict[str, str] = {"Accept": "application/json"}
-    if tool.pkce: body.update({"client_id": os.getenv(tool.client_id_env, ""), "code_verifier": pending["verifier"]})
-    elif tool_name == "notion": headers["Authorization"] = "Basic " + base64.b64encode(f"{os.getenv(tool.client_id_env, '')}:{os.getenv(tool.client_secret_env, '')}".encode()).decode()
-    else: body.update({"client_id": os.getenv(tool.client_id_env, ""), "client_secret": os.getenv(tool.client_secret_env, "")})
+    if tool.pkce: body.update({"client_id": credential(tool.client_id_env), "code_verifier": pending["verifier"]})
+    elif tool_name == "notion": headers["Authorization"] = "Basic " + base64.b64encode(f"{credential(tool.client_id_env)}:{credential(tool.client_secret_env)}".encode()).decode()
+    else: body.update({"client_id": credential(tool.client_id_env), "client_secret": credential(tool.client_secret_env)})
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             response = await client.post(tool.token_url, data=body, headers=headers); response.raise_for_status(); token = response.json()
@@ -64,7 +66,7 @@ async def exchange(tool_name: str, code: str, state: str) -> None:
 @router.get("/{tool_name}/callback")
 async def callback_redirect(tool_name: str, code: str, state: str) -> RedirectResponse:
     await exchange(tool_name, code, state)
-    return RedirectResponse(os.getenv("PROXIMA_FRONTEND_CALLBACK_URL", "http://localhost:3001/dashboard/integrations") + "?connected=" + tool_name, status_code=303)
+    return RedirectResponse(settings.proxima_frontend_callback_url + "?connected=" + tool_name, status_code=303)
 
 @router.post("/{tool_name}/callback")
 async def callback(tool_name: str, payload: CallbackPayload) -> dict:
