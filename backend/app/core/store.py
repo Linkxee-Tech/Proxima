@@ -48,7 +48,7 @@ class Store:
             host=parsed.hostname,
             port=parsed.port or 5432,
             database=parsed.path.lstrip("/"),
-            ssl_context=ssl.create_default_context(),
+            ssl_context=ssl_context,
         )
         self.connection.autocommit = True
         with self.connection.cursor() as cursor:
