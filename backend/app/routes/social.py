@@ -24,6 +24,9 @@ def fallback_drafts(goal: str, platforms: list[str]) -> dict:
     all_drafts = {"twitter":f"We're launching Proxima v2. {goal}", "linkedin":f"We’re excited to introduce Proxima v2. {goal}", "facebook":f"Proxima v2 is here — {goal}", "whatsapp":f"Hi everyone — Proxima v2 is live! {goal}"}
     return {platform: all_drafts[platform] for platform in platforms}
 
+def valid_sample_url(image_url: str | None) -> bool:
+    return bool(image_url and image_url.startswith("/social-gallery/"))
+
 async def generate_drafts(goal: str, platforms: list[str]) -> dict:
     if not settings.openai_api_key: return fallback_drafts(goal, platforms)
     client = AsyncOpenAI(api_key=settings.openai_api_key)
@@ -42,10 +45,16 @@ async def generate_drafts(goal: str, platforms: list[str]) -> dict:
 async def generate_image(prompt: str, user_id: str) -> dict:
     if not settings.openai_api_key: raise HTTPException(status_code=503, detail="OPENAI_API_KEY is required for AI image generation.")
     client = AsyncOpenAI(api_key=settings.openai_api_key)
-    result = await client.images.generate(model=settings.proxima_image_model, prompt=prompt, size="1024x1024", quality="medium")
-    encoded = result.data[0].b64_json
+    try:
+        result = await client.images.generate(model=settings.proxima_image_model, prompt=prompt, size="1024x1024", quality="medium")
+        encoded = result.data[0].b64_json if result.data else None
+    except Exception as error:
+        raise HTTPException(status_code=502, detail="AI image generation failed. Check OPENAI_API_KEY and PROXIMA_IMAGE_MODEL.") from error
     if not encoded: raise HTTPException(status_code=502, detail="Image model returned no image data.")
-    filename = f"generated-{store.id()}.png"; payload = base64.b64decode(encoded); (media_dir() / filename).write_bytes(payload)
+    try:
+        filename = f"generated-{store.id()}.png"; payload = base64.b64decode(encoded, validate=True); (media_dir() / filename).write_bytes(payload)
+    except (ValueError, TypeError) as error:
+        raise HTTPException(status_code=502, detail="Image model returned invalid image data.") from error
     return image_record(user_id, filename, "image/png", len(payload), "ai_generated")
 
 @router.post("/draft")
@@ -53,8 +62,22 @@ async def draft(payload: SocialDraftRequest, user: dict = Depends(current_user))
     platforms = list(dict.fromkeys(payload.platforms))
     if not platforms or any(platform not in PLATFORMS for platform in platforms): raise HTTPException(status_code=422, detail="Select one or more supported social platforms.")
     drafts = await generate_drafts(payload.goal, platforms)
-    image = await generate_image(payload.image_prompt or f"Campaign image for: {payload.goal}", user["id"]) if payload.generate_image else None
-    return {"drafts":drafts, "image":image, "limits":{platform:PLATFORMS[platform] for platform in platforms}}
+    image = None
+    image_error = None
+    if payload.generate_image:
+        if not settings.openai_api_key:
+            image_error = "Text drafts were created, but AI image generation is not configured."
+        else:
+            try:
+                image = await generate_image(payload.image_prompt or f"Campaign image for: {payload.goal}", user["id"])
+            except HTTPException as error:
+                image_error = error.detail
+            except Exception as error:
+                image_error = "AI image generation failed. Check the image provider and media storage configuration."
+    result = {"drafts":drafts, "image":image, "limits":{platform:PLATFORMS[platform] for platform in platforms}}
+    if image_error:
+        result["imageError"] = image_error
+    return result
 
 @router.post("/upload", status_code=201)
 async def upload(file: UploadFile = File(...), user: dict = Depends(current_user)) -> dict:
@@ -72,7 +95,8 @@ def publish(payload: SocialPublishRequest, user: dict = Depends(current_user)) -
         text = payload.content.get(platform, "")
         if not text.strip() or len(text) > PLATFORMS[platform]: raise HTTPException(status_code=422, detail=f"Invalid {platform} post content.")
     if payload.image_id and not any(image["id"] == payload.image_id and image["userId"] == user["id"] for image in store.data.get("media", [])): raise HTTPException(status_code=404, detail="Image not found.")
-    post = {"id":store.id(), "userId":user["id"], "content":payload.content, "platforms":platforms, "imageId":payload.image_id, "scheduledFor":payload.scheduled_for, "status":"scheduled" if payload.scheduled_for else "awaiting_approval", "createdAt":now()}
+    if payload.image_url and not valid_sample_url(payload.image_url) and not payload.image_id: raise HTTPException(status_code=422, detail="Image URL must come from the sample gallery or an uploaded image.")
+    post = {"id":store.id(), "userId":user["id"], "content":payload.content, "platforms":platforms, "imageId":payload.image_id, "imageUrl":payload.image_url, "scheduledFor":payload.scheduled_for, "status":"scheduled" if payload.scheduled_for else "awaiting_approval", "createdAt":now()}
     store.data.setdefault("socialPosts", []).append(post); store.save(); return post
 
 @router.get("/scheduled")
@@ -88,7 +112,8 @@ def cancel(post_id: str, user: dict = Depends(current_user)) -> dict:
 def update_post(post_id: str, payload: SocialPublishRequest, user: dict = Depends(current_user)) -> dict:
     post = next((item for item in store.data.get("socialPosts", []) if item["id"] == post_id and item["userId"] == user["id"]), None)
     if not post: raise HTTPException(status_code=404, detail="Scheduled post not found.")
-    post.update({"content":payload.content, "platforms":payload.platforms, "imageId":payload.image_id, "scheduledFor":payload.scheduled_for, "updatedAt":now()}); store.save(); return post
+    if payload.image_url and not valid_sample_url(payload.image_url) and not payload.image_id: raise HTTPException(status_code=422, detail="Image URL must come from the sample gallery or an uploaded image.")
+    post.update({"content":payload.content, "platforms":payload.platforms, "imageId":payload.image_id, "imageUrl":payload.image_url, "scheduledFor":payload.scheduled_for, "updatedAt":now()}); store.save(); return post
 
 @router.get("/analytics")
 def analytics(user: dict = Depends(current_user)) -> dict:

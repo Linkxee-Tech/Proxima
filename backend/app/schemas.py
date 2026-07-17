@@ -38,4 +38,5 @@ class SocialPublishRequest(BaseModel):
     content: dict[str, str]
     platforms: list[str]
     image_id: str | None = None
+    image_url: str | None = None
     scheduled_for: str | None = None

@@ -25,7 +25,10 @@ frontend/      Next.js application and UI components
 .env.example   Backend environment template
 docker-compose.yml  Local backend/frontend development services
 README.md      Project documentation
+docs/architecture.md  Versioned Mermaid architecture diagram and runtime notes
 ```
+
+See [docs/architecture.md](docs/architecture.md) for the versioned architecture diagram and its editable FigJam companion.
 
 ## Frontend routes
 

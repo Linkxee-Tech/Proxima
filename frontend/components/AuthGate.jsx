@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../lib/proxima-api';
 import Link from 'next/link';
+import Image from 'next/image';
 
 export default function AuthGate({ children, forcePrompt = false, redirectTo = '' }) {
   const [state, setState] = useState({ loading: true, error: '', mode: 'login' });
@@ -36,6 +37,7 @@ export default function AuthGate({ children, forcePrompt = false, redirectTo = '
   return (
     <main className="auth-screen">
       <form className="auth-card panel" onSubmit={submit}>
+        <Link className="auth-brand" href="/" aria-label="Return to Proxima landing page"><Image src="/proxima-command-mark.png" alt="" width={38} height={38} priority /><span>PROXIMA</span></Link>
         <p className="eyebrow">Secure workspace</p><h1>Proxima</h1>
         <p className="lede">{state.mode === 'login' ? 'Sign in to access your workflows.' : 'Create a private workspace.'}</p>
         <label className="field"><span>Email</span><input name="email" type="email" autoComplete="email" required /></label>
@@ -44,6 +46,7 @@ export default function AuthGate({ children, forcePrompt = false, redirectTo = '
         <button className="primary" type="submit">{state.mode === 'login' ? 'Sign in' : 'Create account'}</button>
         {state.mode === 'login' ? <Link className="auth-link" href="/forgot-password">Forgot password?</Link> : null}
         <button className="ghost" type="button" onClick={() => setState((current) => ({ ...current, mode: current.mode === 'login' ? 'register' : 'login', error: '' }))}>{state.mode === 'login' ? 'Create an account' : 'I already have an account'}</button>
+        <Link className="auth-home-link" href="/">Back to landing page</Link>
       </form>
     </main>
   );

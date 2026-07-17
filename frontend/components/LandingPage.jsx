@@ -21,7 +21,7 @@ export default function LandingPage() {
       <div className="welcome-grid" />
       <nav className="welcome-nav" aria-label="Main navigation">
         <Link href="/" className="welcome-brand" aria-label="Proxima home">
-          <span className="welcome-logo"><Image src="/proxima-command-mark.svg" alt="" width={34} height={34} priority /></span>
+          <span className="welcome-logo"><Image src="/proxima-command-mark.png" alt="" width={34} height={34} priority /></span>
           <span>PROXIMA</span>
         </Link>
         <div className="welcome-nav-actions">

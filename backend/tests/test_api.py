@@ -90,11 +90,26 @@ def test_any_local_development_port_can_send_cors_preflight() -> None:
     assert response.headers["access-control-allow-origin"] == "http://localhost:3002"
 
 
-def test_social_draft_and_approval_workflow() -> None:
+def test_social_draft_and_approval_workflow(monkeypatch) -> None:
     auth = headers()
     response = client.post("/api/v1/social/draft", json={"goal":"Launch v2", "platforms":["twitter", "linkedin"]}, headers=auth)
     assert response.status_code == 200
     assert set(response.json()["drafts"]) == {"twitter", "linkedin"}
+    image_response = client.post("/api/v1/social/draft", json={"goal":"Launch v2", "platforms":["twitter"], "generate_image":True}, headers=auth)
+    assert image_response.status_code == 200
+    assert image_response.json()["image"] is None
+    assert "not configured" in image_response.json()["imageError"]
+    async def broken_image(*_args, **_kwargs):
+        raise RuntimeError("provider unavailable")
+    from app.routes import social
+    monkeypatch.setattr(social.settings, "openai_api_key", "test-key")
+    monkeypatch.setattr(social, "generate_image", broken_image)
+    provider_response = client.post("/api/v1/social/draft", json={"goal":"Launch v2", "platforms":["twitter"], "generate_image":True}, headers=auth)
+    assert provider_response.status_code == 200
+    assert "failed" in provider_response.json()["imageError"]
+    sample_post = client.post("/api/v1/social/publish", json={"content":{"twitter":"Launch v2"}, "platforms":["twitter"], "image_url":"/social-gallery/hero.png"}, headers=auth)
+    assert sample_post.status_code == 202
+    assert sample_post.json()["imageUrl"] == "/social-gallery/hero.png"
     workflow = client.post("/api/v1/deploy", json={"goalText":"Launch v2 on Twitter and LinkedIn"}, headers=auth)
     assert workflow.status_code == 201
 

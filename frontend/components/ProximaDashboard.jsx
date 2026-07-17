@@ -305,7 +305,7 @@ function DashboardShell() {
       window.localStorage.removeItem('proxima_token');
       window.localStorage.removeItem('proxima_refresh_token');
       setIsAuthenticated(false);
-      router.replace('/login');
+      router.replace('/');
       router.refresh();
     }
   };
@@ -319,7 +319,7 @@ function DashboardShell() {
       <main className="shell">
       <header className="topbar panel">
         <div className="brand-block">
-          <div className="brand-mark"><Image src="/proxima-command-mark.svg" alt="Proxima" width={29} height={29} priority /></div>
+          <div className="brand-mark"><Image src="/proxima-command-mark.png" alt="Proxima" width={29} height={29} priority /></div>
           <div>
             <p className="eyebrow">AI-native operating system</p>
             <h1>PROXIMA</h1>
