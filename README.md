@@ -1,78 +1,144 @@
-# Proxima
+# Proxima OS
 
-This workspace contains Proxima OS, an approval-first AI-native workflow service.
+Proxima OS is an approval-first AI workflow application. Users describe a goal, Proxima creates a visible workflow plan, pauses high-impact actions for approval, and exposes the result through a dark glass dashboard.
 
-## Final architecture (no alternatives)
+## What is in this repository
 
-| Layer | Exact choice |
+| Area | Implementation |
 | --- | --- |
 | Frontend | Next.js 15, React 19, TypeScript, App Router |
 | Backend | Python 3.11, FastAPI, Uvicorn |
-| UI | React components with local shadcn-compatible Cards and CSS glass engine (cyan `#06b6d4`, purple `#a855f7`, deep-space `#0b0f19`) |
-| Workflow | Durable JSON state with optional Redis queue; DAG execution through WebSocket events |
-| AI and memory | OpenAI Responses API and Pinecone |
-| Hosting | Railway: one frontend service and one Python/FastAPI backend service |
+| State | Durable local JSON in `.proxima-data`; optional PostgreSQL adapter |
+| Workflow UI | React Flow/Dagre task graph, approval center, audit trail, artifacts |
+| Authentication | Local account registration/login with JWT access/refresh tokens and HttpOnly cookies |
+| Integrations | Gmail, Calendar, Slack, Notion, X/Twitter, LinkedIn, Facebook, and server-managed WhatsApp |
+| Realtime | Authenticated WebSocket at `/ws` with heartbeat/reconnect handling |
+| Styling | Local CSS glass UI with reusable inline SVG icons |
 
-The primary dashboard is a 35/65 chat-and-DAG layout. The route surfaces are `/`, `/approvals`, `/memory`, `/history`, and `/settings`. Core components are `ChatPanel`, `MagicInput`, `DAGVisualizer`, `TerminalLog`, `ApprovalModal`, `ArtifactCard`, `Navbar`, and `Sidebar`.
+The repository does not use Supabase authentication. Pinecone, Redis, OpenAI, OAuth providers, and WhatsApp become active only when their corresponding backend environment variables and external services are configured. Without them, supported local fallbacks remain available where implemented.
 
-Social publishing is a Tier 2 differentiator. A social goal produces this immutable plan: `Intent Parse → Draft Core Message → Tailor per Platform → Twitter / LinkedIn / Facebook / WhatsApp`. The Approval Center shows all four tailored previews and exposes one **Approve All** action. Twitter uses OAuth 2.0 PKCE; LinkedIn and Facebook use OAuth authorization-code connections; WhatsApp Business uses its server-side Cloud API token and explicit opt-in recipients. Tokens are AES-256-GCM encrypted at rest.
+## Root layout
 
-The Social Media Hub at `/social` creates platform-specific AI copy, accepts PNG/JPEG/WebP uploads up to the configured limit, and can generate a campaign image with `gpt-image-2`. The server stores only the generated/uploaded media reference and keeps publishing approval-first.
+```text
+backend/       FastAPI application, routes, adapters, tests
+frontend/      Next.js application and UI components
+.env.example   Backend environment template
+docker-compose.yml  Local backend/frontend development services
+README.md      Project documentation
+```
 
-## Tier 2 on-track checklist
+## Frontend routes
 
-- [x] Async Loop — durable queue processing with optional Redis.
-- [x] Memory Mesh — saved context includes brand voice and posting preferences.
-- [x] Approval Center — external actions pause for explicit approval.
-- [x] DAG Visualizer — platform-specific branches render in React Flow.
-- [x] Self-Healing — failed integrations generate a non-executing repair proposal.
-- [x] Multi-Platform Social Drafting — Proxima generates Twitter, LinkedIn, Facebook, and WhatsApp variations from one core message and previews them for approval.
+Public routes:
 
-- GPT-5.6 structured intent parsing and branched DAG planning through the Responses API
-- consent-gated Gmail, Google Calendar, and Slack REST adapters
-- WebSocket workflow events, durable jobs, Pinecone vector-memory adapter, artifact downloads, and local account auth
-- Docker-isolated Codex bridge execution with no project-directory mount
+- `/`
+- `/login`
+- `/register`
+- `/forgot-password`
+- `/reset-password`
 
-## Run
+Protected workspace routes:
 
-1. Copy `.env.example` to your environment and configure the services you intend to use. `OPENAI_API_KEY` is required for real planning. Google and Slack actions require their respective credentials.
+- `/dashboard`
+- `/dashboard/approvals`
+- `/dashboard/memory`
+- `/dashboard/history`
+- `/dashboard/social`
+- `/dashboard/settings`
+- `/dashboard/integrations`
+- `/approvals`, `/memory`, `/history`, `/social`, `/settings`, `/integrations`
 
-   For social publishing, configure the platform client credentials plus `PROXIMA_PUBLIC_APP_URL`, `PROXIMA_PUBLIC_API_URL`, and `PROXIMA_TOKEN_ENCRYPTION_KEY`. The OAuth redirect URI is `PROXIMA_PUBLIC_API_URL/api/v1/tools/{twitter|linkedin|facebook}/callback`. WhatsApp uses its Cloud API token and phone-number ID instead of OAuth.
+The Next.js API proxy maps browser requests from `/api/*` to the backend `/api/v1/*`. Set `PROXIMA_API_BASE_URL` for a hosted backend. WebSocket configuration accepts `NEXT_PUBLIC_PROXIMA_WS_URL` or `NEXT_PUBLIC_WS_URL`.
 
-2. Create a Python 3.11 environment, install the backend, and start FastAPI:
+## Backend API
 
-```bash
+The API is mounted at `/api/v1` and exposed through the frontend proxy. The backend also provides:
+
+- `/health` and `/api/v1/health`
+- `/docs` and `/api/v1/docs`
+- `/openapi.json` and `/api/v1/openapi.json`
+- `/api/v1/auth/*` for registration, login, refresh, logout, profile, and password recovery
+- `/api/v1/workflows`, `/api/v1/deploy`, `/api/v1/intent`, and workflow artifact downloads
+- `/api/v1/approvals`, `/api/v1/history`, `/api/v1/memory`, and `/api/v1/metrics`
+- `/api/v1/tools` for integration status, OAuth connect/callback/disconnect, and consent-scoped execution
+- `/api/v1/social` for drafts, uploads, approval-first publishing, scheduled posts, and analytics
+- `/ws` for authenticated realtime events
+
+Password recovery uses one-time, expiring, hashed reset tokens. The UI is available at `/forgot-password` and `/reset-password`. Because no mail provider is bundled, `PROXIMA_EXPOSE_RESET_TOKEN=true` is supported only for disposable local development; keep it `false` in production and connect token delivery to a mail service.
+
+WhatsApp Business is server-managed rather than OAuth. It requires both `WHATSAPP_ACCESS_TOKEN` and `WHATSAPP_PHONE_NUMBER_ID`; a missing token is reported as unconfigured rather than treated as connected.
+
+## Environment configuration
+
+Copy the templates before starting:
+
+```powershell
+Copy-Item .env.example backend/.env
+Copy-Item frontend/.env.example frontend/.env.local
+```
+
+At minimum, production requires:
+
+```env
+PROXIMA_JWT_SECRET=<long-random-secret>
+PROXIMA_TOKEN_ENCRYPTION_KEY=<fernet-key-or-random-secret>
+PROXIMA_CORS_ORIGINS=https://your-frontend.example
+PROXIMA_PUBLIC_APP_URL=https://your-frontend.example
+PROXIMA_PUBLIC_API_URL=https://your-api.example
+```
+
+Set `PROXIMA_STORAGE_BACKEND=postgres` and `PROXIMA_DATABASE_URL` only when the PostgreSQL connection is available. Keep `PROXIMA_ALLOW_INSECURE_LOCAL_AUTH=false` in production. Never commit `backend/.env` or `frontend/.env.local`.
+
+## Local development
+
+### Backend
+
+```powershell
 cd backend
 python -m venv .venv
-.venv\Scripts\activate
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-3. In another terminal, start the frontend:
+### Frontend
 
-```bash
+Use Node.js 22 or 24 LTS; the project engine is `>=22 <25`.
+
+```powershell
 cd frontend
-# Use Node.js 22 or 24 LTS. Node.js 25 is not supported by this project.
-npm install
+npm ci
 npm run dev
 ```
 
-4. Open:
+Open `http://localhost:3000` unless your environment maps the frontend to another port.
 
-```text
-http://localhost:3001
+### Docker Compose
+
+From the repository root:
+
+```powershell
+docker compose up --build
 ```
 
-## Implementation Notes
-
-- The dashboard uses WebSocket updates rather than interval polling.
-- A task graph now renders explicit `dependsOn` relationships and can run independent ready nodes concurrently.
-- Gmail, Calendar, Slack, Pinecone, Redis, Docker, and OpenAI are real adapters, but they cannot perform external work until their credentials/services are configured.
-- Generated code only runs when `PROXIMA_ENABLE_SANDBOX=true`; the container is read-only, drops Linux capabilities, has resource limits, and does not mount this repository.
-- The computer-use adapter intentionally requires an isolated, consented runner. It is not safe to expose arbitrary desktop control from the main API process.
-- For a hosted frontend, set `PROXIMA_API_BASE_URL` to the backend HTTPS URL and `NEXT_PUBLIC_PROXIMA_WS_URL` to its `/ws` WSS URL. Docker Compose supplies local equivalents automatically.
+Compose runs FastAPI on port `8000` and the Next.js development server on port `3001`.
 
 ## Verification
 
-Run `python -m compileall -q app` and `python -m pytest tests -q` from `backend`, then run `npm run typecheck` and `npm run build` from `frontend`. Live integration verification requires the matching credentials and services above; secrets are never stored in the frontend.
+Backend checks:
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m compileall -q app
+.\.venv\Scripts\python.exe -m pytest tests -q
+```
+
+Frontend checks:
+
+```powershell
+cd frontend
+npm run type-check
+npm run build
+```
+
+The current local verification is green: **11 backend tests pass**, Python compilation passes, and the frontend type-check/build pass with 21 generated routes. There is currently no standalone `npm run lint` script. Live provider connectivity, OAuth completion, Vercel/Render deployment, custom domains, SSL, performance budgets, browser-console checks, and external service health require credentials and hosted environments; they are not claimed as locally verified.

@@ -8,6 +8,7 @@ import ApprovalModal from './ApprovalModal';
 import DAGVisualizer from './DAGVisualizer';
 import ArtifactCard from './ArtifactCard';
 import TerminalLog from './TerminalLog';
+import Icon from './Icon';
 import { ToastProvider, useToast } from './ToastProvider';
 import { apiFetch } from '../lib/proxima-api';
 
@@ -42,7 +43,7 @@ function GoalUnderstanding({ intent, goal, tasks = [], approvalNeeded = false, d
   return (
     <div className={`goal-understanding ${detailed ? 'detailed' : ''}`}>
       <div className="understanding-topline">
-        <span className="understanding-icon">&#10022;</span>
+        <span className="understanding-icon"><Icon name="spark" size={16} /></span>
         <div>
           <strong>{social ? 'Campaign workflow' : 'Workflow plan'}</strong>
           <span>{titleCase(intent.action || 'automation')}</span>
@@ -137,7 +138,7 @@ function DashboardShell() {
     let reconnectTimer;
     let stopped = false;
     const connect = () => {
-      const configured = process.env.NEXT_PUBLIC_PROXIMA_WS_URL;
+      const configured = process.env.NEXT_PUBLIC_PROXIMA_WS_URL || process.env.NEXT_PUBLIC_WS_URL;
       const token = window.localStorage.getItem('proxima_token');
       const fallback = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://127.0.0.1:8000/ws${token ? `?token=${encodeURIComponent(token)}` : ''}`;
       const target = configured ? `${configured}${configured.includes('?') ? '&' : '?'}token=${encodeURIComponent(token || '')}` : fallback;
@@ -461,7 +462,7 @@ function DashboardShell() {
         <section className="panel board">
           <div className="panel-header">
             <div>
-              <p className="eyebrow">Task board</p>
+              <p className="eyebrow with-icon"><Icon name="workflow" size={14} /> Task board</p>
               <h2>Workflow graph</h2>
             </div>
             <span className="muted">{workflows.length} workflows</span>
@@ -537,7 +538,7 @@ function DashboardShell() {
             />
           </div>
           <section className="terminal-panel">
-            <div className="panel-header"><div><p className="eyebrow">Live system log</p><h2>Execution terminal</h2></div></div>
+            <div className="panel-header"><div><p className="eyebrow with-icon"><Icon name="activity" size={14} /> Live system log</p><h2>Execution terminal</h2></div></div>
             <TerminalLog entries={selectedWorkflow?.auditTrail || []} />
           </section>
         </section>
@@ -546,7 +547,7 @@ function DashboardShell() {
           <section className="panel">
             <div className="panel-header">
               <div>
-                <p className="eyebrow">Approval center</p>
+                <p className="eyebrow with-icon"><Icon name="shield" size={14} /> Approval center</p>
                 <h2>Pending gates</h2>
               </div>
             </div>
@@ -567,10 +568,10 @@ function DashboardShell() {
                     </div>
                     <div className="action-row">
                       <button type="button" className="primary" onClick={() => setApprovalWorkflow(workflow)}>
-                        Review
+                        <Icon name="search" size={15} /> Review
                       </button>
                       <button type="button" className="secondary" onClick={() => handleCancel(workflow)}>
-                        Cancel
+                        <Icon name="x" size={15} /> Cancel
                       </button>
                     </div>
                   </article>
@@ -584,7 +585,7 @@ function DashboardShell() {
           <section className="panel">
             <div className="panel-header">
               <div>
-                <p className="eyebrow">Memory mesh</p>
+                <p className="eyebrow with-icon"><Icon name="brain" size={14} /> Memory mesh</p>
                 <h2>Known contacts</h2>
               </div>
             </div>
@@ -613,7 +614,7 @@ function DashboardShell() {
       <section className="panel details-panel">
         <div className="panel-header">
           <div>
-            <p className="eyebrow">Execution details</p>
+            <p className="eyebrow with-icon"><Icon name="terminal" size={14} /> Execution details</p>
             <h2>Selected run</h2>
           </div>
           <span className="mono muted">{selectedWorkflow ? selectedWorkflow.id : 'No workflow selected'}</span>
@@ -642,11 +643,11 @@ function DashboardShell() {
                             : 'Draft'}
                   </span>
                   <button type="button" className="secondary" onClick={() => handleCancel(selectedWorkflow)}>
-                    Cancel
+                    <Icon name="x" size={15} /> Cancel
                   </button>
                   {selectedWorkflow.status === 'waiting_approval' ? (
                     <button type="button" className="primary" onClick={() => setApprovalWorkflow(selectedWorkflow)}>
-                      Approve
+                      <Icon name="check" size={15} /> Approve
                     </button>
                   ) : null}
                 </div>

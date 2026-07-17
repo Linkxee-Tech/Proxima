@@ -1,2 +1,3 @@
 import type { ReactNode } from 'react';
-export function Sheet({open,onClose,children}:{open:boolean;onClose:()=>void;children:ReactNode}){return open?<aside className="panel sheet" role="dialog" aria-modal="true"><button className="ghost" onClick={onClose}>Close</button>{children}</aside>:null}
+import Icon from '../Icon';
+export function Sheet({open,onClose,children}:{open:boolean;onClose:()=>void;children:ReactNode}){return open?<aside className="panel sheet" role="dialog" aria-modal="true"><button className="ghost with-icon" onClick={onClose}><Icon name="x" size={16}/> Close</button>{children}</aside>:null}

@@ -6,11 +6,13 @@ from fastapi.responses import RedirectResponse
 from .core.config import settings
 from .core.security import websocket_user
 from .middleware.logging import LoggingMiddleware
+from .middleware.rate_limit import RateLimitMiddleware
 from .middleware.exceptions import unhandled_exception
 from .routes import health, auth, workflows, memory, integrations, social, approvals, history, deploy, tools, metrics
 
 app = FastAPI(title="Proxima OS API", version="1.0.0", docs_url=None, redoc_url=None, openapi_url=None)
 app.add_middleware(LoggingMiddleware)
+app.add_middleware(RateLimitMiddleware)
 app.add_exception_handler(Exception, unhandled_exception)
 app.add_middleware(
     CORSMiddleware,
@@ -47,7 +49,7 @@ app.mount("/media", StaticFiles(directory=str(Path(settings.proxima_data_dir) / 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
     try:
-        websocket_user(websocket.query_params.get("token"))
+        websocket_user(websocket.query_params.get("token"), websocket.cookies.get("proxima_access_token"))
     except ValueError:
         await websocket.close(code=1008)
         return

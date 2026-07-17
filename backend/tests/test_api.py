@@ -6,6 +6,8 @@ from uuid import uuid4
 
 os.environ["PROXIMA_STORAGE_BACKEND"] = "local"
 os.environ["OPENAI_API_KEY"] = ""
+os.environ["PROXIMA_JWT_SECRET"] = "test-only-secret-that-is-long-enough-for-auth"
+os.environ["PROXIMA_EXPOSE_RESET_TOKEN"] = "true"
 TEST_DATA_DIR = tempfile.mkdtemp(prefix="proxima-test-")
 os.environ["PROXIMA_DATA_DIR"] = TEST_DATA_DIR
 atexit.register(shutil.rmtree, TEST_DATA_DIR, ignore_errors=True)
@@ -27,8 +29,8 @@ def headers() -> dict[str, str]:
 
 
 def test_health_and_core_discovery() -> None:
-    assert client.get("/health").status_code == 200
-    assert client.get("/api/v1/health").status_code == 200
+    assert client.get("/health").json()["status"] == "ok"
+    assert client.get("/api/v1/health").json()["status"] == "ok"
     tools = client.get("/api/v1/tools", headers=headers()).json()["items"]
     assert len(tools) == 8
     assert next(item for item in tools if item["name"] == "whatsapp")["connectionRequired"] is False
@@ -54,6 +56,26 @@ def test_local_frontend_cors_preflight_is_allowed() -> None:
     )
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+
+
+def test_auth_issues_httponly_browser_cookies() -> None:
+    response = client.post("/api/v1/auth/register", json={"email": f"cookie-{uuid4()}@example.com", "password": "test-password-123"})
+    assert response.status_code == 201
+    cookies = response.headers.get("set-cookie", "")
+    assert "proxima_access_token=" in cookies and "HttpOnly" in cookies
+    assert "proxima_refresh_token=" in cookies and "HttpOnly" in cookies
+
+
+def test_password_reset_token_is_one_time_and_updates_password() -> None:
+    email = f"reset-{uuid4()}@example.com"
+    client.post("/api/v1/auth/register", json={"email": email, "password": "test-password-123"})
+    requested = client.post("/api/v1/auth/forgot-password", json={"email": email})
+    assert requested.status_code == 200 and requested.json().get("resetToken")
+    token = requested.json()["resetToken"]
+    changed = client.post("/api/v1/auth/reset-password", json={"token": token, "password": "new-password-456"})
+    assert changed.status_code == 200
+    assert client.post("/api/v1/auth/reset-password", json={"token": token, "password": "another-password-789"}).status_code == 400
+    assert client.post("/api/v1/auth/login", json={"email": email, "password": "new-password-456"}).status_code == 200
 
 
 def test_any_local_development_port_can_send_cors_preflight() -> None:

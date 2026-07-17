@@ -1,6 +1,8 @@
 # Secrets and local runtime data
 .env
 backend/.env
+frontend/.env.local
+frontend/.env.*.local
 .proxima-data/
 backend/.proxima-data/
 .agents/

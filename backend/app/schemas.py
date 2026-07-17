@@ -6,6 +6,15 @@ class Credentials(BaseModel):
     password: str = Field(min_length=10, max_length=256)
 
 
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirm(BaseModel):
+    token: str = Field(min_length=20, max_length=512)
+    password: str = Field(min_length=10, max_length=256)
+
+
 class GoalRequest(BaseModel):
     goalText: str = Field(min_length=1, max_length=20000)
 

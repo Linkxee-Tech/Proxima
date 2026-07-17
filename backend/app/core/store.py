@@ -9,7 +9,7 @@ from .config import settings
 
 
 def empty_state() -> dict:
-    return {"users": [], "workflows": [], "memories": [], "audit": []}
+    return {"users": [], "workflows": [], "memories": [], "audit": [], "passwordResetTokens": []}
 
 
 class Store:

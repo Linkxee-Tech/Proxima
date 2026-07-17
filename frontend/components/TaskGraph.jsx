@@ -12,6 +12,9 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import * as dagre from 'dagre';
+import Icon from './Icon';
+
+const nodeIcon = (kind) => ({ root: 'target', research: 'research', writing: 'pencil', design: 'design', code: 'code', task: 'workflow' }[kind] || 'workflow');
 
 function statusLabel(status) {
   if (status === 'done' || status === 'completed') return 'Completed';
@@ -27,7 +30,7 @@ const CustomNode = ({ data }) => {
     <>
       <Handle type="target" position={Position.Top} style={{ background: '#555' }} />
       <div className={`task-node ${data.kind} ${data.status}`} style={{ width: '100%', height: '100%', pointerEvents: 'none' }}>
-        <div className="task-node-head">
+        <div className="task-node-head"><span className="node-icon"><Icon name={nodeIcon(data.kind)} size={16} /></span>
           <span className="task-node-kicker">{data.kind === 'root' ? 'Kernel' : data.kind}</span>
           <span className={`pill ${status === 'waiting_approval' || status === 'waiting-approval' ? 'warn' : status === 'running' ? 'running' : status === 'done' || status === 'completed' ? 'ok' : 'neutral'}`}>
             {statusLabel(status)}
