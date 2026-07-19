@@ -102,6 +102,10 @@ export default function LandingPage() {
           <article><span>03 / APPROVE</span><div className="feature-icon">&#10003;</div><h3>Approve with confidence</h3><p>Messages, publishing, and other high-impact actions pause until you have reviewed the exact next step.</p><small>You always make the final call before anything goes outside Proxima.</small></article>
         </div>
       </section>
+      <footer className="welcome-footer">
+        <span>© 2026 Proxima</span>
+        <div><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link></div>
+      </footer>
     </main>
   );
 }
