@@ -6,12 +6,18 @@ import Link from 'next/link';
 import Image from 'next/image';
 
 export default function AuthGate({ children, forcePrompt = false, redirectTo = '' }) {
-  const [state, setState] = useState({ loading: true, error: '', mode: 'login' });
+  const [state, setState] = useState({ loading: true, error: '', mode: 'login', authenticated: false });
 
   useEffect(() => {
+    let active = true;
     apiFetch('/api/auth/me')
-      .then(() => setState({ loading: false, error: '', mode: 'login' }))
-      .catch(() => setState((current) => ({ ...current, loading: false })));
+      .then(() => {
+        if (active) setState({ loading: false, error: '', mode: 'login', authenticated: true });
+      })
+      .catch((error) => {
+        if (active) setState((current) => ({ ...current, loading: false, authenticated: false, error: error.message || 'Authentication required.' }));
+      });
+    return () => { active = false; };
   }, []);
 
   const submit = async (event) => {
@@ -28,12 +34,12 @@ export default function AuthGate({ children, forcePrompt = false, redirectTo = '
       window.localStorage.setItem('proxima_token', payload.token);
       if (payload.refreshToken) window.localStorage.setItem('proxima_refresh_token', payload.refreshToken);
       if (redirectTo) { window.location.assign(redirectTo); return; }
-      setState({ loading: false, error: '', mode: 'login' });
+      setState({ loading: false, error: '', mode: 'login', authenticated: true });
     } catch (error) { setState((current) => ({ ...current, error: error.message })); }
   };
 
   if (state.loading) return <main className="auth-screen"><p>Connecting to Proxima...</p></main>;
-  if (typeof window !== 'undefined' && (window.localStorage.getItem('proxima_token') || (!forcePrompt && !state.error))) return children;
+  if (!forcePrompt && state.authenticated) return children;
   return (
     <main className="auth-screen">
       <form className="auth-card panel" onSubmit={submit}>

@@ -81,6 +81,7 @@ function DashboardShell() {
   const lastErrorRef = useRef('');
   const sidebarRef = useRef(null);
   const navToggleRef = useRef(null);
+  const authToken = typeof window === 'undefined' ? '' : window.localStorage.getItem('proxima_token');
 
   const selectedWorkflow = useMemo(
     () => workflows.find((workflow) => workflow.id === selectedId) || workflows[0] || null,
@@ -140,7 +141,11 @@ function DashboardShell() {
     const connect = () => {
       const configured = process.env.NEXT_PUBLIC_PROXIMA_WS_URL || process.env.NEXT_PUBLIC_WS_URL;
       const token = window.localStorage.getItem('proxima_token');
-      const fallback = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://127.0.0.1:8000/ws${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+      if (!token) {
+        setRealtimeConnected(false);
+        return;
+      }
+      const fallback = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://localhost:8000/ws${token ? `?token=${encodeURIComponent(token)}` : ''}`;
       const target = configured ? `${configured}${configured.includes('?') ? '&' : '?'}token=${encodeURIComponent(token || '')}` : fallback;
       socket = new WebSocket(target);
       socket.onopen = () => { setRealtimeConnected(true); setError(null); };
@@ -161,7 +166,7 @@ function DashboardShell() {
     };
     connect();
     return () => { stopped = true; clearTimeout(reconnectTimer); socket?.close(); };
-  }, [loadDashboard]);
+  }, [loadDashboard, authToken]);
 
   useEffect(() => {
     setIsAuthenticated(Boolean(window.localStorage.getItem('proxima_token')));

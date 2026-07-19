@@ -24,6 +24,21 @@ def decode_token(token: str) -> dict:
         raise ValueError("Invalid token.") from error
 
 
+def access_token_user(token: str) -> dict:
+    """Return the authenticated user only for a valid access token.
+
+    Refresh tokens are intentionally limited to the refresh endpoint and must
+    never authorize REST or WebSocket requests.
+    """
+    try:
+        payload = jwt.decode(token, settings.proxima_jwt_secret, algorithms=[settings.jwt_algorithm])
+        if payload.get("type") != "access":
+            raise ValueError("An access token is required.")
+        return {"id": payload["sub"], "email": payload["email"]}
+    except (jwt.PyJWTError, KeyError, ValueError) as error:
+        raise ValueError("Authentication required.") from error
+
+
 def current_user(request: Request) -> dict:
     if not settings.proxima_jwt_secret:
         if settings.proxima_allow_insecure_local_auth:
@@ -31,9 +46,8 @@ def current_user(request: Request) -> dict:
         raise HTTPException(status_code=503, detail="PROXIMA_JWT_SECRET is required for authenticated API access.")
     token = request.headers.get("authorization", "").removeprefix("Bearer ").strip() or request.cookies.get("proxima_access_token", "")
     try:
-        payload = jwt.decode(token, settings.proxima_jwt_secret, algorithms=[settings.jwt_algorithm])
-        return {"id": payload["sub"], "email": payload["email"]}
-    except Exception as error:
+        return access_token_user(token)
+    except ValueError as error:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.") from error
 
 
@@ -42,8 +56,4 @@ def websocket_user(token: str | None, cookie_token: str | None = None) -> dict:
         if settings.proxima_allow_insecure_local_auth:
             return {"id": "local", "email": "local@proxima.dev"}
         raise ValueError("PROXIMA_JWT_SECRET is required for authenticated WebSocket access.")
-    try:
-        payload = jwt.decode(token or cookie_token or "", settings.proxima_jwt_secret, algorithms=[settings.jwt_algorithm])
-        return {"id": payload["sub"], "email": payload["email"]}
-    except Exception as error:
-        raise ValueError("Authentication required.") from error
+    return access_token_user(token or cookie_token or "")

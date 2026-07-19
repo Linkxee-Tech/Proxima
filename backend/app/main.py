@@ -28,6 +28,12 @@ app.mount("/api/v1", api)
 app.mount("/api", api)
 
 
+@app.get("/", include_in_schema=False)
+def root() -> RedirectResponse:
+    """Give local users a browser-friendly API entry point."""
+    return RedirectResponse("/docs")
+
+
 @app.get("/health", include_in_schema=False)
 def root_health() -> dict:
     """Stable platform health-check path for Render and other hosts."""

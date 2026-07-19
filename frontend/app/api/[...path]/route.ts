@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 
-const backendBaseUrl = process.env.PROXIMA_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+const backendBaseUrl = process.env.PROXIMA_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 async function proxy(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   const { path } = await context.params;

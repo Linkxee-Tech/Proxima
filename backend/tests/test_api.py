@@ -4,6 +4,9 @@ import shutil
 import tempfile
 from uuid import uuid4
 
+import pytest
+from starlette.websockets import WebSocketDisconnect
+
 os.environ["PROXIMA_STORAGE_BACKEND"] = "local"
 os.environ["OPENAI_API_KEY"] = ""
 os.environ["PROXIMA_JWT_SECRET"] = "test-only-secret-that-is-long-enough-for-auth"
@@ -38,8 +41,11 @@ def test_health_and_core_discovery() -> None:
 
 
 def test_root_swagger_aliases_reach_the_api_schema() -> None:
+    root = client.get("/", follow_redirects=True)
     docs = client.get("/docs", follow_redirects=True)
     schema = client.get("/openapi.json", follow_redirects=True)
+    assert root.status_code == 200
+    assert "Swagger UI" in root.text
     assert docs.status_code == 200
     assert "Swagger UI" in docs.text
     assert schema.status_code == 200
@@ -88,6 +94,37 @@ def test_any_local_development_port_can_send_cors_preflight() -> None:
     )
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == "http://localhost:3002"
+
+
+def test_websocket_requires_access_token_and_supports_heartbeat() -> None:
+    with pytest.raises(WebSocketDisconnect) as denied:
+        with client.websocket_connect("/ws"):
+            pass
+    assert denied.value.code == 1008
+
+    response = client.post(
+        "/api/v1/auth/register",
+        json={"email": f"socket-{uuid4()}@example.com", "password": "test-password-123"},
+    )
+    assert response.status_code == 201
+    with client.websocket_connect(f"/ws?token={response.json()['token']}") as websocket:
+        assert websocket.receive_json()["type"] == "connected"
+        websocket.send_text("ping")
+        assert websocket.receive_json()["type"] == "heartbeat"
+
+
+def test_refresh_tokens_cannot_authorize_api_or_websocket_requests() -> None:
+    response = client.post(
+        "/api/v1/auth/register",
+        json={"email": f"refresh-{uuid4()}@example.com", "password": "test-password-123"},
+    )
+    assert response.status_code == 201
+    refresh_token = response.json()["refreshToken"]
+    assert client.get("/api/v1/metrics", headers={"Authorization": f"Bearer {refresh_token}"}).status_code == 401
+    with pytest.raises(WebSocketDisconnect) as denied:
+        with client.websocket_connect(f"/ws?token={refresh_token}"):
+            pass
+    assert denied.value.code == 1008
 
 
 def test_social_draft_and_approval_workflow(monkeypatch) -> None:
