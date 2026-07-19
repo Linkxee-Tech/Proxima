@@ -15,8 +15,14 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     return Response.json({ detail: 'The API proxy URL is invalid.' }, { status: 503 });
   }
   target.search = sourceUrl.search;
-  const headers = new Headers(request.headers);
-  headers.delete('host');
+  // Do not forward Vercel's hop-by-hop request headers. In particular,
+  // forwarding `connection` and `content-length` can make an upstream POST
+  // fail even though the same route works when called directly.
+  const headers = new Headers();
+  for (const name of ['accept', 'authorization', 'content-type', 'cookie']) {
+    const value = request.headers.get(name);
+    if (value) headers.set(name, value);
+  }
   const method = request.method.toUpperCase();
   const body = method === 'GET' || method === 'HEAD' ? undefined : await request.arrayBuffer();
   let upstream: Response;
