@@ -20,12 +20,13 @@ from app.main import app
 
 
 client = TestClient(app)
+PASSWORD = "secret1"
 
 
 def headers() -> dict[str, str]:
     response = client.post(
         "/api/v1/auth/register",
-        json={"email": f"test-{uuid4()}@example.com", "password": "test-password-123"},
+        json={"email": f"test-{uuid4()}@example.com", "password": PASSWORD},
     )
     assert response.status_code == 201
     return {"Authorization": f"Bearer {response.json()['token']}"}
@@ -65,7 +66,7 @@ def test_local_frontend_cors_preflight_is_allowed() -> None:
 
 
 def test_auth_issues_httponly_browser_cookies() -> None:
-    response = client.post("/api/v1/auth/register", json={"email": f"cookie-{uuid4()}@example.com", "password": "test-password-123"})
+    response = client.post("/api/v1/auth/register", json={"email": f"cookie-{uuid4()}@example.com", "password": PASSWORD})
     assert response.status_code == 201
     cookies = response.headers.get("set-cookie", "")
     assert "proxima_access_token=" in cookies and "HttpOnly" in cookies
@@ -74,14 +75,14 @@ def test_auth_issues_httponly_browser_cookies() -> None:
 
 def test_password_reset_token_is_one_time_and_updates_password() -> None:
     email = f"reset-{uuid4()}@example.com"
-    client.post("/api/v1/auth/register", json={"email": email, "password": "test-password-123"})
+    client.post("/api/v1/auth/register", json={"email": email, "password": PASSWORD})
     requested = client.post("/api/v1/auth/forgot-password", json={"email": email})
     assert requested.status_code == 200 and requested.json().get("resetToken")
     token = requested.json()["resetToken"]
-    changed = client.post("/api/v1/auth/reset-password", json={"token": token, "password": "new-password-456"})
+    changed = client.post("/api/v1/auth/reset-password", json={"token": token, "password": "newpass"})
     assert changed.status_code == 200
-    assert client.post("/api/v1/auth/reset-password", json={"token": token, "password": "another-password-789"}).status_code == 400
-    assert client.post("/api/v1/auth/login", json={"email": email, "password": "new-password-456"}).status_code == 200
+    assert client.post("/api/v1/auth/reset-password", json={"token": token, "password": "another"}).status_code == 400
+    assert client.post("/api/v1/auth/login", json={"email": email, "password": "newpass"}).status_code == 200
 
 
 def test_any_local_development_port_can_send_cors_preflight() -> None:
@@ -104,7 +105,7 @@ def test_websocket_requires_access_token_and_supports_heartbeat() -> None:
 
     response = client.post(
         "/api/v1/auth/register",
-        json={"email": f"socket-{uuid4()}@example.com", "password": "test-password-123"},
+        json={"email": f"socket-{uuid4()}@example.com", "password": PASSWORD},
     )
     assert response.status_code == 201
     with client.websocket_connect(f"/ws?token={response.json()['token']}") as websocket:
@@ -116,7 +117,7 @@ def test_websocket_requires_access_token_and_supports_heartbeat() -> None:
 def test_refresh_tokens_cannot_authorize_api_or_websocket_requests() -> None:
     response = client.post(
         "/api/v1/auth/register",
-        json={"email": f"refresh-{uuid4()}@example.com", "password": "test-password-123"},
+        json={"email": f"refresh-{uuid4()}@example.com", "password": PASSWORD},
     )
     assert response.status_code == 201
     refresh_token = response.json()["refreshToken"]
@@ -125,6 +126,15 @@ def test_refresh_tokens_cannot_authorize_api_or_websocket_requests() -> None:
         with client.websocket_connect(f"/ws?token={refresh_token}"):
             pass
     assert denied.value.code == 1008
+
+
+def test_new_passwords_must_be_between_six_and_eight_characters() -> None:
+    short = client.post("/api/v1/auth/register", json={"email": f"short-{uuid4()}@example.com", "password": "short"})
+    accepted = client.post("/api/v1/auth/register", json={"email": f"valid-{uuid4()}@example.com", "password": "sixsix"})
+    long = client.post("/api/v1/auth/register", json={"email": f"long-{uuid4()}@example.com", "password": "toolong99"})
+    assert short.status_code == 422
+    assert accepted.status_code == 201
+    assert long.status_code == 422
 
 
 def test_social_draft_and_approval_workflow(monkeypatch) -> None:

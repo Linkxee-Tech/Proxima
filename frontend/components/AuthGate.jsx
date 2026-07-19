@@ -47,7 +47,7 @@ export default function AuthGate({ children, forcePrompt = false, redirectTo = '
         <p className="eyebrow">Secure workspace</p><h1>Proxima</h1>
         <p className="lede">{state.mode === 'login' ? 'Sign in to access your workflows.' : 'Create a private workspace.'}</p>
         <label className="field"><span>Email</span><input name="email" type="email" autoComplete="email" required /></label>
-        <label className="field"><span>Password</span><input name="password" type="password" autoComplete={state.mode === 'login' ? 'current-password' : 'new-password'} minLength="10" required /></label>
+        <label className="field"><span>Password</span><input name="password" type="password" autoComplete={state.mode === 'login' ? 'current-password' : 'new-password'} minLength="6" maxLength={state.mode === 'register' ? 8 : undefined} required /></label>
         {state.error ? <p className="auth-error">{state.error}</p> : null}
         <button className="primary" type="submit">{state.mode === 'login' ? 'Sign in' : 'Create account'}</button>
         {state.mode === 'login' ? <Link className="auth-link" href="/forgot-password">Forgot password?</Link> : null}

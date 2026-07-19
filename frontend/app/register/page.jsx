@@ -15,7 +15,7 @@ export default function RegisterPage() {
 
   const submit = async (event) => {
     event.preventDefault();
-    if (password.length < 10) return setError('Use at least 10 characters for your password.');
+    if (password.length < 6 || password.length > 8) return setError('Use 6 to 8 characters for your password.');
     setBusy(true);
     setError('');
     try {
@@ -40,7 +40,7 @@ export default function RegisterPage() {
         <p className="eyebrow">Create Proxima account</p>
         <h1>Start with a secure workspace</h1>
         <label className="field"><span>Email</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
-        <label className="field"><span>Password</span><input type="password" minLength="10" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
+        <label className="field"><span>Password</span><input type="password" minLength="6" maxLength="8" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
         {error && <p className="auth-error">{error}</p>}
         <button className="primary" disabled={busy}>{busy ? 'Creating account...' : 'Create account'}</button>
         <Link className="ghost" href="/login">Already have an account? Sign in</Link>

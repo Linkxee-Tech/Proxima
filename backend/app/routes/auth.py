@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from ..core.store import store
 from ..core.config import settings
 from ..core.security import current_user, issue_token, issue_refresh_token, decode_token
-from ..schemas import Credentials, PasswordResetRequest, PasswordResetConfirm
+from ..schemas import Credentials, RegistrationCredentials, PasswordResetRequest, PasswordResetConfirm
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 passwords = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -36,7 +36,7 @@ def allow(email: str) -> None:
     bucket.append(now)
 
 @router.post("/register", status_code=201)
-def register(payload: Credentials, response: Response) -> dict:
+def register(payload: RegistrationCredentials, response: Response) -> dict:
     with store.lock:
         if any(user["email"] == payload.email for user in store.data["users"]):
             raise HTTPException(status_code=409, detail="An account already exists for this email.")

@@ -3,7 +3,13 @@ from pydantic import BaseModel, EmailStr, Field
 
 class Credentials(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=10, max_length=256)
+    # Keep login compatible with existing accounts that may have longer passwords.
+    password: str = Field(min_length=6, max_length=256)
+
+
+class RegistrationCredentials(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=6, max_length=8)
 
 
 class PasswordResetRequest(BaseModel):
@@ -12,7 +18,7 @@ class PasswordResetRequest(BaseModel):
 
 class PasswordResetConfirm(BaseModel):
     token: str = Field(min_length=20, max_length=512)
-    password: str = Field(min_length=10, max_length=256)
+    password: str = Field(min_length=6, max_length=8)
 
 
 class GoalRequest(BaseModel):
