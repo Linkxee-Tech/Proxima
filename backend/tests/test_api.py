@@ -41,6 +41,12 @@ def test_health_and_core_discovery() -> None:
     assert client.get("/api/v1/metrics", headers=headers()).status_code == 200
 
 
+def test_slack_oauth_scopes_match_the_configured_slack_app() -> None:
+    tools = client.get("/api/v1/tools", headers=headers()).json()["items"]
+    slack = next(item for item in tools if item["name"] == "slack")
+    assert slack["scopes"] == ["chat:write", "channels:manage", "groups:read", "users:read", "incoming-webhook"]
+
+
 def test_root_swagger_aliases_reach_the_api_schema() -> None:
     root = client.get("/", follow_redirects=True)
     docs = client.get("/docs", follow_redirects=True)
