@@ -91,6 +91,25 @@ def test_password_reset_token_is_one_time_and_updates_password() -> None:
     assert client.post("/api/v1/auth/login", json={"email": email, "password": "newpass"}).status_code == 200
 
 
+def test_password_reset_emails_a_one_time_link_in_production(monkeypatch) -> None:
+    from app.routes import auth
+
+    sent: dict[str, str] = {}
+    monkeypatch.setattr(auth.settings, "proxima_expose_reset_token", False)
+    monkeypatch.setattr(auth.settings, "proxima_smtp_host", "smtp.example.com")
+    monkeypatch.setattr(auth.settings, "proxima_smtp_from", "Proxima <support@example.com>")
+    monkeypatch.setattr(auth.settings, "proxima_public_app_url", "https://proxima.example.com")
+    monkeypatch.setattr(auth, "send_reset_email", lambda email, token: sent.update(email=email, token=token))
+    email = f"mail-reset-{uuid4()}@example.com"
+    assert client.post("/api/v1/auth/register", json={"email": email, "password": PASSWORD}).status_code == 201
+    response = client.post("/api/v1/auth/forgot-password", json={"email": email})
+    assert response.status_code == 200
+    assert "resetToken" not in response.json()
+    assert sent["email"] == email and sent["token"]
+    reset = client.post("/api/v1/auth/reset-password", json={"token": sent["token"], "password": "newpass"})
+    assert reset.status_code == 200
+
+
 def test_any_local_development_port_can_send_cors_preflight() -> None:
     response = client.options(
         "/api/v1/health",

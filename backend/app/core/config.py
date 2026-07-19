@@ -16,6 +16,13 @@ class Settings(BaseSettings):
     jwt_refresh_token_expire_days: int = 14
     proxima_password_reset_token_ttl_minutes: int = 30
     proxima_expose_reset_token: bool = False
+    proxima_smtp_host: str = ""
+    proxima_smtp_port: int = 587
+    proxima_smtp_username: str = ""
+    proxima_smtp_password: str = ""
+    proxima_smtp_from: str = ""
+    proxima_smtp_use_tls: bool = True
+    proxima_smtp_use_ssl: bool = False
     proxima_cors_origins: str = "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:3001"
     openai_api_key: str = ""
     proxima_openai_model: str = "gpt-5.6"

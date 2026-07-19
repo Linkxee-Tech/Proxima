@@ -1,8 +1,12 @@
 from datetime import datetime, timezone
 from collections import defaultdict, deque
+from email.message import EmailMessage
 from time import time
 import hashlib
 import secrets
+import smtplib
+import ssl
+from urllib.parse import urlencode
 from passlib.context import CryptContext
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
@@ -34,6 +38,31 @@ def allow(email: str) -> None:
     while bucket and bucket[0] < now - 60: bucket.popleft()
     if len(bucket) >= 5: raise HTTPException(status_code=429, detail="Too many login attempts. Try again in a minute.")
     bucket.append(now)
+
+
+def reset_email_configured() -> bool:
+    return bool(settings.proxima_smtp_host and settings.proxima_smtp_from)
+
+
+def send_reset_email(email: str, raw_token: str) -> None:
+    """Send the one-time reset URL without recording the raw token anywhere."""
+    reset_url = f"{settings.proxima_public_app_url.rstrip('/')}/reset-password?{urlencode({'token': raw_token})}"
+    message = EmailMessage()
+    message["Subject"] = "Reset your Proxima password"
+    message["From"] = settings.proxima_smtp_from
+    message["To"] = email
+    message.set_content(
+        "We received a request to reset your Proxima password.\n\n"
+        f"Use this one-time link within {settings.proxima_password_reset_token_ttl_minutes} minutes:\n{reset_url}\n\n"
+        "If you did not request this, you can safely ignore this email."
+    )
+    client_class = smtplib.SMTP_SSL if settings.proxima_smtp_use_ssl else smtplib.SMTP
+    with client_class(settings.proxima_smtp_host, settings.proxima_smtp_port, timeout=15) as client:
+        if settings.proxima_smtp_use_tls and not settings.proxima_smtp_use_ssl:
+            client.starttls(context=ssl.create_default_context())
+        if settings.proxima_smtp_username:
+            client.login(settings.proxima_smtp_username, settings.proxima_smtp_password)
+        client.send_message(message)
 
 @router.post("/register", status_code=201)
 def register(payload: RegistrationCredentials, response: Response) -> dict:
@@ -87,9 +116,11 @@ def me(user: dict = Depends(current_user)) -> dict:
 
 @router.post("/forgot-password")
 def forgot_password(payload: PasswordResetRequest) -> dict:
-    """Create a one-time reset token without revealing whether an address exists."""
+    """Email a one-time reset token without exposing whether an address exists."""
+    if not settings.proxima_expose_reset_token and not reset_email_configured():
+        raise HTTPException(status_code=503, detail="Password-reset email is not configured. Contact the service administrator.")
     user = next((item for item in store.data["users"] if item["email"] == payload.email), None)
-    result = {"ok": True, "message": "If an account exists for that email, reset instructions have been issued."}
+    result = {"ok": True, "message": "If an account exists for that email, reset instructions have been sent."}
     if not user:
         return result
     raw_token = secrets.token_urlsafe(32)
@@ -100,6 +131,15 @@ def forgot_password(payload: PasswordResetRequest) -> dict:
     audit(user["id"], "password_reset_requested")
     if settings.proxima_expose_reset_token:
         result["resetToken"] = raw_token
+        return result
+    try:
+        send_reset_email(user["email"], raw_token)
+    except (OSError, smtplib.SMTPException) as error:
+        with store.lock:
+            record["used"] = True
+            store.save()
+        audit(user["id"], "password_reset_delivery_failed")
+        raise HTTPException(status_code=502, detail="Unable to send password-reset email. Try again later.") from error
     return result
 
 

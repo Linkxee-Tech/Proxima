@@ -65,13 +65,20 @@ PROXIMA_CORS_ORIGINS=https://your-frontend.example
 PROXIMA_PUBLIC_APP_URL=https://your-frontend.example
 PROXIMA_PUBLIC_API_URL=https://your-api.example
 PROXIMA_FRONTEND_CALLBACK_URL=https://your-frontend.example/dashboard/integrations
+# Required to deliver password-reset links in production.
+PROXIMA_SMTP_HOST=smtp.example.com
+PROXIMA_SMTP_PORT=587
+PROXIMA_SMTP_USERNAME=...
+PROXIMA_SMTP_PASSWORD=...
+PROXIMA_SMTP_FROM=Proxima <support@your-domain.example>
+PROXIMA_SMTP_USE_TLS=true
 
 # Frontend
 PROXIMA_API_BASE_URL=https://your-api.example
 NEXT_PUBLIC_PROXIMA_WS_URL=wss://your-api.example/ws
 ```
 
-Add OpenAI, OAuth, Redis, Pinecone, and WhatsApp credentials only when you need those features. Never put secrets in the repository.
+Add OpenAI, OAuth, Redis, Pinecone, and WhatsApp credentials only when you need those features. Never put secrets in the repository. Password resets require a working SMTP provider in production; the backend never returns reset tokens to a hosted browser.
 
 ## Deployment
 
