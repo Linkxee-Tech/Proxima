@@ -179,6 +179,7 @@ button:disabled {
 .settings-heading, .usage-grid { display: flex; justify-content: space-between; align-items: flex-start; gap: .75rem; flex-wrap: wrap; }
 .usage-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 1.25rem 0; }
 .connection-card { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
+.connection-card:has(.slack-message-form) { display: grid; align-items: stretch; }.slack-message-form { display: grid; gap: .7rem; width: 100%; padding-top: .85rem; border-top: 1px solid rgba(148,163,184,.14); }.slack-message-form textarea { width: 100%; resize: vertical; min-height: 5rem; padding: .75rem; border: 1px solid rgba(148,163,184,.28); border-radius: 14px; color: var(--text); background: rgba(4, 11, 22, .72); }.slack-message-form .primary { width: fit-content; }.slack-message-form .muted { margin: 0; font-size: .78rem; }
 .platform-selector, .social-controls, .social-hub-grid { display: flex; gap: .75rem; flex-wrap: wrap; margin: 1rem 0; }
 .platform-selector label, .social-controls > label { padding: .65rem .75rem; border: 1px solid rgba(148,163,184,.16); border-radius: 12px; color: var(--muted); }
 .social-controls .field { flex: 1 1 320px; padding: 0; border: 0; }.upload-control { display: inline-flex; align-items: center; cursor: pointer; }

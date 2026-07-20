@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from ..core.crypto import encrypt
+from ..core.crypto import decrypt
 from ..core.config import settings
 from ..core.security import current_user
 from ..core.store import store
@@ -22,6 +23,11 @@ class CallbackPayload(BaseModel):
 class ExecutePayload(BaseModel):
     action: str
     parameters: dict = Field(default_factory=dict)
+
+
+class SlackMessagePayload(BaseModel):
+    channel: str = Field(min_length=2, max_length=80)
+    text: str = Field(min_length=1, max_length=40000)
 
 def connections(user_id: str) -> list[dict]:
     return [item for item in store.data.setdefault("connections", []) if item["userId"] == user_id]
@@ -79,6 +85,32 @@ def disconnect(tool_name: str, user: dict = Depends(current_user)) -> dict:
     with store.lock:
         before = len(store.data.setdefault("connections", [])); store.data["connections"][:] = [item for item in store.data["connections"] if not (item["userId"] == user["id"] and item["tool"] == tool_name)]; store.save()
     return {"ok": True, "disconnected": before != len(store.data["connections"])}
+
+
+@router.post("/slack/messages", status_code=201)
+async def send_slack_message(payload: SlackMessagePayload, user: dict = Depends(current_user)) -> dict:
+    """Send a user-authored message through the user's connected Slack bot."""
+    connection = next((item for item in connections(user["id"]) if item["tool"] == "slack"), None)
+    if not connection:
+        raise HTTPException(status_code=409, detail="Connect Slack before sending a message.")
+    try:
+        token = decrypt(connection["accessToken"])
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.post(
+                "https://slack.com/api/chat.postMessage",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"channel": payload.channel.strip(), "text": payload.text.strip()},
+            )
+        result = response.json()
+    except (httpx.HTTPError, ValueError) as error:
+        raise HTTPException(status_code=502, detail="Slack could not be reached. Try again shortly.") from error
+    if not response.is_success or not result.get("ok"):
+        raise HTTPException(status_code=502, detail=f"Slack rejected the message: {result.get('error', 'unknown_error')}.")
+    entry = {"id": store.id(), "userId": user["id"], "tool": "slack", "action": "chat.postMessage", "at": time.time(), "status": "sent", "channel": result.get("channel"), "messageTs": result.get("ts")}
+    with store.lock:
+        store.data["audit"].append(entry)
+        store.save()
+    return {"ok": True, "channel": result.get("channel"), "messageTs": result.get("ts")}
 
 @router.post("/{tool_name}/execute")
 def execute(tool_name: str, payload: ExecutePayload, user: dict = Depends(current_user)) -> dict:
