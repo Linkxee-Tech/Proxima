@@ -1,2 +1,2 @@
-import SettingsPanel from '../../components/SettingsPanel';
-export default function Page() { return <SettingsPanel />; }
+import PreferencesPanel from '../../components/PreferencesPanel';
+export default function Page() { return <PreferencesPanel />; }
