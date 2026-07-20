@@ -13,8 +13,6 @@ export default function Navbar({ title = 'Proxima OS', action }) {
       </Link>
       <div className="topbar-actions">
         <span className="status-pill ok"><Icon name="activity" size={13} /> Live</span>
-        <button type="button" className="icon-button" aria-label="Notifications"><Icon name="bell" /></button>
-        <button type="button" className="icon-button" aria-label="Help"><Icon name="help" /></button>
         {action}
       </div>
     </header>
