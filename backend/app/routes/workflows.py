@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Response
 from ..core.store import store
 from ..core.security import current_user
+from ..core.realtime import realtime
 from ..schemas import GoalRequest, ApprovalRequest
 
 router = APIRouter(tags=["workflows"])
@@ -62,9 +63,10 @@ def social_workflow(goal: str, user_id: str) -> dict:
     return {"id":identifier,"userId":user_id,"goalText":goal,"parsed":{"action":"multi_platform_social_publish","summary":"Tailored social publishing awaits approval."},"tasks":tasks,"steps":tasks,"socialDrafts":drafts,"status":"waiting_approval","artifacts":[artifact("Social campaign drafts", campaign)],"auditTrail":[{"id":store.id(),"at":now(),"level":"info","message":"Social drafts generated; approval required."}],"createdAt":now(),"updatedAt":now()}
 
 @router.post("/workflows", status_code=201)
-def create(payload: GoalRequest, user: dict = Depends(current_user)) -> dict:
-    workflow = social_workflow(payload.goalText, user["id"]) if any(word in payload.goalText.lower() for word in ["social", "twitter", "linkedin", "facebook", "whatsapp"]) else {"id":store.id(),"userId":user["id"],"goalText":payload.goalText,"parsed":{"action":"automation","summary":payload.goalText},"tasks":[],"steps":[],"status":"completed","artifacts":[artifact("Workflow summary", payload.goalText)],"auditTrail":[],"createdAt":now(),"updatedAt":now()}
+async def create(payload: GoalRequest, user: dict = Depends(current_user)) -> dict:
+    workflow = social_workflow(payload.goalText, user["id"]) if any(word in payload.goalText.lower() for word in ["social", "twitter", "linkedin", "facebook", "whatsapp"]) else {"id":store.id(),"userId":user["id"],"goalText":payload.goalText,"parsed":{"action":"automation","summary":payload.goalText},"tasks":[],"steps":[],"status":"completed","artifacts":[artifact("Workflow summary", payload.goalText)],"auditTrail":[{"id":store.id(),"at":now(),"level":"info","message":"Workflow created."}],"createdAt":now(),"updatedAt":now()}
     with store.lock: store.data["workflows"].insert(0, workflow); store.save()
+    await realtime.workflow_updated(workflow)
     return workflow
 
 @router.get("/workflows")
@@ -85,25 +87,29 @@ def download_artifact(workflow_id: str, artifact_id: str, user: dict = Depends(c
     return Response(item.get("content", ""), media_type="text/plain; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 @router.post("/workflows/{workflow_id}/approve")
-def approve(workflow_id: str, payload: ApprovalRequest, user: dict = Depends(current_user)) -> dict:
+async def approve(workflow_id: str, payload: ApprovalRequest, user: dict = Depends(current_user)) -> dict:
     workflow = owned(workflow_id, user["id"])
     gates = [task for task in workflow["tasks"] if task.get("isApprovalGate") and task["status"] == "waiting_approval"]
     if not gates:
         raise HTTPException(status_code=409, detail="No pending approvals remain.")
     for gate in gates if payload.all else gates[:1]:
         approve_gate(workflow, gate["id"])
+    workflow["auditTrail"].insert(0, {"id": store.id(), "at": now(), "level": "info", "message": "Approval granted; workflow advanced."})
     store.save()
+    await realtime.workflow_updated(workflow)
     return workflow
 
 @router.post("/workflows/{workflow_id}/rerun", status_code=201)
-def rerun(workflow_id: str, user: dict = Depends(current_user)) -> dict: return create(GoalRequest(goalText=owned(workflow_id, user["id"])["goalText"]), user)
+async def rerun(workflow_id: str, user: dict = Depends(current_user)) -> dict: return await create(GoalRequest(goalText=owned(workflow_id, user["id"])["goalText"]), user)
 
 @router.post("/workflows/{workflow_id}/cancel")
-def cancel(workflow_id: str, user: dict = Depends(current_user)) -> dict:
+async def cancel(workflow_id: str, user: dict = Depends(current_user)) -> dict:
     workflow = owned(workflow_id, user["id"])
     for task in workflow["tasks"]:
         if task["status"] in {"pending", "waiting_approval"}: task["status"] = "skipped"
-    workflow["status"] = "cancelled"; workflow["updatedAt"] = now(); store.save(); return workflow
+    workflow["status"] = "cancelled"; workflow["updatedAt"] = now(); workflow["auditTrail"].insert(0, {"id": store.id(), "at": now(), "level": "warning", "message": "Workflow cancelled."}); store.save()
+    await realtime.workflow_updated(workflow)
+    return workflow
 
 @router.post("/intent")
 def intent(payload: GoalRequest, user: dict = Depends(current_user)) -> dict:

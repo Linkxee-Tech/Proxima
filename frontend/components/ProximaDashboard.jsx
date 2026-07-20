@@ -548,7 +548,7 @@ function DashboardShell() {
             />
           </div>
           <section className="terminal-panel">
-            <div className="panel-header"><div><p className="eyebrow with-icon"><Icon name="activity" size={14} /> Live system log</p><h2>Execution terminal</h2></div></div>
+            <div className="panel-header"><div><p className="eyebrow with-icon"><Icon name="activity" size={14} /> Workflow activity</p><h2>Activity log</h2><p className="muted">Saved workflow events update as actions are completed.</p></div></div>
             <TerminalLog entries={selectedWorkflow?.auditTrail || []} />
           </section>
         </section>
@@ -711,19 +711,6 @@ function DashboardShell() {
               </article>
 
               <article className="detail-card">
-                <p className="eyebrow">Task graph</p>
-                <DAGVisualizer
-                  workflow={selectedWorkflow}
-                  onNodeSelect={(node) => {
-                    setSelectedNode(node);
-                    if (node?.step?.isApprovalGate && node.step.status === 'waiting_approval') {
-                      setApprovalWorkflow(selectedWorkflow);
-                    }
-                  }}
-                />
-              </article>
-
-              <article className="detail-card">
                 <p className="eyebrow">Artifacts</p>
                 <div className="artifacts">
                   {selectedWorkflow.artifacts.length ? (
@@ -736,24 +723,6 @@ function DashboardShell() {
                 </div>
               </article>
 
-              <article className="detail-card">
-                <p className="eyebrow">Audit trail</p>
-                <div className="audit">
-                  {selectedWorkflow.auditTrail.length ? (
-                    selectedWorkflow.auditTrail.slice(0, 8).map((entry) => (
-                      <div className="audit-entry" key={entry.id}>
-                        <div className="audit-top">
-                          <small>{new Date(entry.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</small>
-                          <span className="pill neutral">{entry.level}</span>
-                        </div>
-                        <div>{entry.message}</div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="details-empty compact">No audit entries yet.</div>
-                  )}
-                </div>
-              </article>
             </section>
           </div>
         ) : (

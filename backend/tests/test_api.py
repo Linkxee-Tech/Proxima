@@ -139,6 +139,17 @@ def test_websocket_requires_access_token_and_supports_heartbeat() -> None:
         assert websocket.receive_json()["type"] == "heartbeat"
 
 
+def test_websocket_receives_owned_workflow_updates() -> None:
+    auth = headers()
+    with client.websocket_connect(f"/ws?token={auth['Authorization'].removeprefix('Bearer ')}") as websocket:
+        assert websocket.receive_json()["type"] == "connected"
+        created = client.post("/api/v1/workflows", json={"goalText": "Create a launch brief"}, headers=auth)
+        assert created.status_code == 201
+        event = websocket.receive_json()
+        assert event["type"] == "workflow.updated"
+        assert event["workflow"]["id"] == created.json()["id"]
+
+
 def test_refresh_tokens_cannot_authorize_api_or_websocket_requests() -> None:
     response = client.post(
         "/api/v1/auth/register",

@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
 from .core.config import settings
+from .core.realtime import realtime
 from .core.security import websocket_user
 from .middleware.logging import LoggingMiddleware
 from .middleware.rate_limit import RateLimitMiddleware
@@ -55,15 +56,17 @@ app.mount("/media", StaticFiles(directory=str(Path(settings.proxima_data_dir) / 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
     try:
-        websocket_user(websocket.query_params.get("token"), websocket.cookies.get("proxima_access_token"))
+        user = websocket_user(websocket.query_params.get("token"), websocket.cookies.get("proxima_access_token"))
     except ValueError:
         await websocket.close(code=1008)
         return
-    await websocket.accept()
+    await realtime.connect(user["id"], websocket)
     await websocket.send_json({"type": "connected", "service": "proxima-fastapi"})
     try:
         while True:
             await websocket.receive_text()
             await websocket.send_json({"type": "heartbeat"})
     except WebSocketDisconnect:
-        return
+        pass
+    finally:
+        realtime.disconnect(user["id"], websocket)
