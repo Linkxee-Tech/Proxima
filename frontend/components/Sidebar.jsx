@@ -5,13 +5,16 @@ import { usePathname } from 'next/navigation';
 import Icon from './Icon';
 
 const items = [
-  ['/dashboard', 'Dashboard', 'grid'],
-  ['/dashboard/approvals', 'Approvals', 'shield'],
-  ['/dashboard/memory', 'Memory', 'brain'],
-  ['/dashboard/history', 'History', 'clock'],
-  ['/dashboard/social', 'Social', 'share'],
+  ['/dashboard', 'Home', 'grid'],
+  ['/dashboard/work', 'My Work', 'workflow'],
+  ['/dashboard/drafts', 'Drafts', 'fileText'],
+  ['/dashboard/approvals', 'Needs Your Approval', 'shield'],
+  ['/dashboard/memory', 'Knowledge', 'brain'],
+  ['/dashboard/social', 'Campaigns', 'share'],
+  ['/dashboard/history', 'Activity', 'clock'],
+  ['/dashboard/insights', 'Insights', 'activity'],
   ['/dashboard/settings', 'Settings', 'settings'],
-  ['/dashboard/integrations', 'Integrations', 'plug'],
+  ['/dashboard/integrations', 'Connected Apps', 'plug'],
 ];
 
 export default function Sidebar() {

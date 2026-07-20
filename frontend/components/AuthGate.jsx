@@ -30,7 +30,7 @@ export default function AuthGate({ children, forcePrompt = false, redirectTo = '
         body: JSON.stringify({ email: form.get('email'), password: form.get('password') }),
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || 'Unable to authenticate.');
+      if (!response.ok) throw new Error(payload.error || payload.detail || 'Unable to authenticate.');
       window.localStorage.setItem('proxima_token', payload.token);
       if (payload.refreshToken) window.localStorage.setItem('proxima_refresh_token', payload.refreshToken);
       if (redirectTo) { window.location.assign(redirectTo); return; }
@@ -45,7 +45,7 @@ export default function AuthGate({ children, forcePrompt = false, redirectTo = '
       <form className="auth-card panel" onSubmit={submit}>
         <Link className="auth-brand" href="/" aria-label="Return to Proxima landing page"><Image src="/proxima-command-mark.png" alt="" width={38} height={38} priority /><span>PROXIMA</span></Link>
         <p className="eyebrow">Secure workspace</p><h1>Proxima</h1>
-        <p className="lede">{state.mode === 'login' ? 'Sign in to access your workflows.' : 'Create a private workspace.'}</p>
+        <p className="lede">{state.mode === 'login' ? 'Sign in to see your work.' : 'Create your private workspace.'}</p>
         <label className="field"><span>Email</span><input name="email" type="email" autoComplete="email" required /></label>
         <label className="field"><span>Password</span><input name="password" type="password" autoComplete={state.mode === 'login' ? 'current-password' : 'new-password'} minLength="6" maxLength={state.mode === 'register' ? 8 : undefined} required /></label>
         {state.error ? <p className="auth-error">{state.error}</p> : null}

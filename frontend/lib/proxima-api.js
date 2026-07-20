@@ -5,14 +5,15 @@ async function readPayload(response) {
 
 export async function apiFetch(path, options = {}, allowRefresh = true) {
   const token = typeof window === 'undefined' ? '' : window.localStorage.getItem('proxima_token');
+  const { headers: optionHeaders, ...requestOptions } = options;
   const response = await fetch(path, {
+    ...requestOptions,
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.headers || {}),
+      ...(optionHeaders || {}),
     },
     cache: 'no-store',
-    ...options,
   });
 
   if (response.status === 401 && allowRefresh && !path.includes('/auth/')) {

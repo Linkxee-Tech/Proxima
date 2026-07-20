@@ -2,18 +2,55 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Sidebar from './Sidebar';
 import ApprovalModal from './ApprovalModal';
 import DAGVisualizer from './DAGVisualizer';
 import ArtifactCard from './ArtifactCard';
 import TerminalLog from './TerminalLog';
+import MissionTimeline from './MissionTimeline';
+import CompletionScreen from './CompletionScreen';
 import Icon from './Icon';
 import { ToastProvider, useToast } from './ToastProvider';
 import { apiFetch } from '../lib/proxima-api';
 
 function titleCase(value = '') {
   return String(value).replace(/[_-]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function greeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function firstNameFromEmail(email = '') {
+  const firstPart = String(email).split('@')[0].split(/[._-]/)[0].trim();
+  return firstPart ? firstPart.charAt(0).toUpperCase() + firstPart.slice(1) : '';
+}
+
+function progressFor(workflow) {
+  if (!workflow?.steps?.length) return 0;
+  return Math.round((workflow.steps.filter((step) => step.status === 'done' || step.status === 'skipped').length / workflow.steps.length) * 100);
+}
+
+function humanStepTitle(step = {}) {
+  const title = String(step.title || '').toLowerCase();
+  if (step.isApprovalGate || title.includes('approval')) return 'Waiting for your approval';
+  if (title.includes('intent') || title.includes('parse')) return 'Understanding your request';
+  if (title.includes('draft')) return 'Drafting the message';
+  if (title.includes('tailor') || title.includes('platform')) return 'Preparing the right version for each app';
+  return step.title || 'Preparing the next step';
+}
+
+function WorkTimeline({ workflow }) {
+  const steps = workflow?.steps || [];
+  if (!steps.length) return null;
+  return <ol className="work-timeline">{steps.map((step) => {
+    const state = step.status === 'done' || step.status === 'skipped' ? 'done' : step.status === 'waiting_approval' ? 'waiting' : 'current';
+    return <li className={state} key={step.id || step.title}><span aria-hidden="true">{state === 'done' ? '✓' : state === 'waiting' ? '!' : '•'}</span>{humanStepTitle(step)}</li>;
+  })}</ol>;
 }
 
 function GoalUnderstanding({ intent, goal, tasks = [], approvalNeeded = false, detailed = false }) {
@@ -45,14 +82,14 @@ function GoalUnderstanding({ intent, goal, tasks = [], approvalNeeded = false, d
       <div className="understanding-topline">
         <span className="understanding-icon"><Icon name="spark" size={16} /></span>
         <div>
-          <strong>{social ? 'Campaign workflow' : 'Workflow plan'}</strong>
+          <strong>{social ? 'Campaign plan' : 'Your plan'}</strong>
           <span>{titleCase(intent.action || 'automation')}</span>
         </div>
         <span className={`understanding-safety ${needsApproval ? 'approval' : 'safe'}`}>
-          {needsApproval ? 'Approval required' : 'Ready to prepare'}
+          {needsApproval ? 'I will ask before sharing' : 'Ready to prepare'}
         </span>
       </div>
-      <p className="understanding-summary">{intent.summary || goal || 'Proxima is preparing a workflow from your request.'}</p>
+      <p className="understanding-summary">{intent.summary || goal || 'Proxima is preparing your request.'}</p>
       {channels.length ? <div className="understanding-chips">{channels.map((channel) => <span key={channel}>{titleCase(channel)}</span>)}</div> : null}
       <ol className="understanding-steps">
         {steps.map((step, index) => <li key={step}><span>{index + 1}</span>{step}</li>)}
@@ -65,6 +102,7 @@ function GoalUnderstanding({ intent, goal, tasks = [], approvalNeeded = false, d
 function DashboardShell() {
   const { pushToast } = useToast();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [workflows, setWorkflows] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [selectedNode, setSelectedNode] = useState(null);
@@ -78,6 +116,10 @@ function DashboardShell() {
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [accountName, setAccountName] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [planReady, setPlanReady] = useState(false);
+  const [preparingPlan, setPreparingPlan] = useState(false);
   const lastErrorRef = useRef('');
   const sidebarRef = useRef(null);
   const navToggleRef = useRef(null);
@@ -175,7 +217,13 @@ function DashboardShell() {
 
   useEffect(() => {
     setIsAuthenticated(Boolean(window.localStorage.getItem('proxima_token')));
+    apiFetch('/api/auth/me').then((result) => setAccountName(firstNameFromEmail(result.user?.email))).catch(() => setAccountName(''));
   }, []);
+
+  useEffect(() => {
+    const sharedGoal = searchParams.get('goal');
+    if (sharedGoal) setInputValue(sharedGoal);
+  }, [searchParams]);
 
   useEffect(() => {
     if (!workflows.length) {
@@ -216,6 +264,8 @@ function DashboardShell() {
     return () => clearTimeout(handle);
   }, [inputValue]);
 
+  useEffect(() => { setPlanReady(false); }, [inputValue]);
+
   useEffect(() => {
     const collapseOnOutsideClick = (event) => {
       if (!sidebarOpen) return;
@@ -226,8 +276,23 @@ function DashboardShell() {
     return () => document.removeEventListener('pointerdown', collapseOnOutsideClick);
   }, [sidebarOpen]);
 
-  const createWorkflow = async (event) => {
+  const preparePlan = async (event) => {
     event.preventDefault();
+    const goalText = inputValue.trim();
+    if (!goalText) return;
+
+    setPreparingPlan(true);
+    try {
+      const intent = await apiFetch('/api/intent', { method: 'POST', body: JSON.stringify({ goalText }) });
+      setLastIntent(intent);
+      setPlanReady(true);
+    } catch (err) {
+      setLastIntent({ error: err.message, text: goalText });
+      pushToast(err.message || 'I could not prepare a plan yet.', 'error');
+    } finally { setPreparingPlan(false); }
+  };
+
+  const createWorkflow = async () => {
     const goalText = inputValue.trim();
     if (!goalText) return;
 
@@ -240,11 +305,31 @@ function DashboardShell() {
       setSelectedId(workflow.id);
       setSelectedNode(null);
       setLastIntent(workflow.parsed);
-      pushToast('Workflow created and queued.', 'success');
+      pushToast('I have prepared the work and will keep you updated.', 'success');
       await loadDashboard(true);
       setInputValue('');
+      setPlanReady(false);
     } catch (err) {
-      pushToast(err.message || 'Could not create workflow', 'error');
+      pushToast(err.message || 'I could not start this work.', 'error');
+    }
+  };
+
+  const saveDraft = async () => {
+    const goalText = inputValue.trim();
+    if (!goalText) return;
+    try {
+      const draft = await apiFetch('/api/workflows/drafts', {
+        method: 'POST',
+        body: JSON.stringify({ goalText }),
+      });
+      setWorkflows((current) => [draft, ...current.filter((item) => item.id !== draft.id)]);
+      setSelectedId(draft.id);
+      pushToast('Saved to Drafts. You can start it whenever you are ready.', 'success');
+      await loadDashboard(true);
+      setInputValue('');
+      setPlanReady(false);
+    } catch (err) {
+      pushToast(err.message || 'I could not save this draft.', 'error');
     }
   };
 
@@ -256,7 +341,7 @@ function DashboardShell() {
         method: 'POST',
         body: JSON.stringify({ all: Boolean(approvalWorkflow.socialDrafts) }),
       });
-      pushToast('Approval granted. Workflow resumed.', 'success');
+      pushToast('Thank you. I will continue from here.', 'success');
       setApprovalWorkflow(null);
       await loadDashboard(true);
     } catch (err) {
@@ -272,11 +357,50 @@ function DashboardShell() {
         method: 'POST',
         body: '{}',
       });
-      pushToast('Workflow cancelled.', 'warning');
+      pushToast('This work has been cancelled.', 'warning');
       setApprovalWorkflow(null);
       await loadDashboard(true);
     } catch (err) {
       pushToast(err.message || 'Cancellation failed', 'error');
+    }
+  };
+
+  const handleDefer = async () => {
+    const approvalStep = approvalWorkflow?.steps?.find((step) => step.isApprovalGate && step.status === 'waiting_approval');
+    if (!approvalWorkflow || !approvalStep) return;
+    try {
+      await apiFetch(`/api/approvals/${approvalWorkflow.id}:${approvalStep.id}/defer`, { method: 'POST', body: '{}' });
+      pushToast('Saved for later. Nothing has been changed outside Proxima.', 'info');
+      setApprovalWorkflow(null);
+      await loadDashboard(true);
+    } catch (err) {
+      pushToast(err.message || 'I could not defer this decision.', 'error');
+    }
+  };
+
+  const startDraft = async (workflow) => {
+    if (!workflow || workflow.status !== 'draft') return;
+    try {
+      const started = await apiFetch(`/api/workflows/${workflow.id}/start`, { method: 'POST', body: '{}' });
+      setWorkflows((current) => [started, ...current.filter((item) => item.id !== started.id)]);
+      setSelectedId(started.id);
+      pushToast('Your saved draft is now underway.', 'success');
+      await loadDashboard(true);
+    } catch (err) {
+      pushToast(err.message || 'I could not start this draft.', 'error');
+    }
+  };
+
+  const resumeDeferred = async (workflow) => {
+    const approvalStep = workflow?.steps?.find((step) => step.isApprovalGate && step.status === 'deferred');
+    if (!workflow || !approvalStep) return;
+    try {
+      const resumed = await apiFetch(`/api/approvals/${workflow.id}:${approvalStep.id}/resume`, { method: 'POST', body: '{}' });
+      setWorkflows((current) => [resumed, ...current.filter((item) => item.id !== resumed.id)]);
+      setApprovalWorkflow(resumed);
+      await loadDashboard(true);
+    } catch (err) {
+      pushToast(err.message || 'I could not reopen this decision.', 'error');
     }
   };
 
@@ -298,7 +422,7 @@ function DashboardShell() {
 
   const sample = (value) => {
     setInputValue(value);
-    pushToast('Sample loaded into the composer.', 'info');
+      pushToast('Example added. You can change it before starting.', 'info');
   };
 
   const handleLogout = async () => {
@@ -331,15 +455,15 @@ function DashboardShell() {
         <div className="brand-block">
           <div className="brand-mark"><Image src="/proxima-command-mark.png" alt="Proxima" width={29} height={29} priority /></div>
           <div>
-            <p className="eyebrow">AI-native operating system</p>
+            <p className="eyebrow">Your chief of staff</p>
             <h1>PROXIMA</h1>
           </div>
         </div>
         <nav className="command-tabs" aria-label="Workspace sections">
-          <a className="active" href="/dashboard">Workspace</a>
+          <a className="active" href="/dashboard">Home</a>
           <a href="/dashboard/approvals">Approvals {pendingApprovals.length ? `(${pendingApprovals.length})` : ''}</a>
-          <a href="/dashboard/memory">Memory</a>
-          <a href="/dashboard/social">Social</a>
+          <a href="/dashboard/work">My Work</a>
+          <a href="/dashboard/integrations">Connected Apps</a>
         </nav>
         <div className="topbar-actions">
           <button
@@ -369,23 +493,22 @@ function DashboardShell() {
 
       <section className="hero panel control-strip">
         <div className="hero-copy">
-          <p className="eyebrow">Mission control</p>
-          <h2>Every action stays visible.</h2>
+          <p className="eyebrow">{greeting()}{accountName ? `, ${accountName}` : ''} 👋</p>
+          <h2>What can I help you accomplish today?</h2>
           <p className="lede">
-            Plan, observe, and approve work from one live operating surface.
+            Share an outcome. I&apos;ll prepare a clear plan, handle the details, and ask when your decision is needed.
           </p>
           <div className="hero-chips">
-            <span className="chip subtle">Intent parsing</span>
-            <span className="chip subtle">Task graph</span>
-            <span className="chip subtle">Approval center</span>
-            <span className="chip subtle">Memory mesh</span>
+            <span className="chip subtle">Clear plans</span>
+            <span className="chip subtle">Your approval first</span>
+            <span className="chip subtle">Connected apps</span>
           </div>
         </div>
         <div className="hero-stats">
           {[
-            { label: 'Workflows', value: metrics?.total || 0 },
-            { label: 'Running', value: metrics?.running || 0 },
-            { label: 'Awaiting approval', value: metrics?.waitingApproval || 0 },
+            { label: 'My work', value: metrics?.total || 0 },
+            { label: 'Working now', value: metrics?.running || 0 },
+            { label: 'Needs approval', value: metrics?.waitingApproval || 0 },
             { label: 'Completed', value: metrics?.completed || 0 },
           ].map((item) => (
             <article className="stat" key={item.label}>
@@ -402,80 +525,78 @@ function DashboardShell() {
           <Sidebar />
           <div className="sidebar-live-status">
             <span className={realtimeConnected ? 'live' : ''} />
-            {realtimeConnected ? 'System live' : 'Reconnecting'}
+            {realtimeConnected ? 'Ready to help' : 'Reconnecting'}
           </div>
         </aside>
         <aside className="panel rail">
           <div className="panel-header">
             <div>
-              <p className="eyebrow">Conversation hub</p>
-              <h2>Launch a workflow</h2>
+              <p className="eyebrow">Start here</p>
+              <h2>Tell me what you need</h2>
             </div>
           </div>
 
-          <form className="goal-form" onSubmit={createWorkflow}>
+          <form className="goal-form" onSubmit={preparePlan}>
             <label className="field">
-              <span>Your goal</span>
+              <span>What would you like to accomplish today?</span>
               <textarea
                 rows={6}
                 value={inputValue}
                 onChange={(event) => setInputValue(event.target.value)}
-                placeholder="Send an email to John saying I'll be late."
+                placeholder="Prepare tomorrow's board meeting"
               />
             </label>
 
             <div className="form-actions">
-              <button type="submit" className="primary">
-                Create workflow
+              <button type="submit" className="primary" disabled={preparingPlan || !inputValue.trim()}>
+                {preparingPlan ? 'Preparing your plan…' : 'Start working'}
               </button>
             </div>
           </form>
 
           <div className="samples">
             <button type="button" className="chip" onClick={() => sample("Send an email to John saying I'll be late.")}>
-              Email demo
+              Reply to an email
             </button>
             <button
               type="button"
               className="chip"
               onClick={() => sample('Schedule a meeting with Zhang San next Wednesday.')}
             >
-              Meeting demo
+              Plan a meeting
             </button>
             <button
               type="button"
               className="chip"
               onClick={() => sample('Research competitor pricing and generate a comparison report.')}
             >
-              Research demo
+              Research a market
             </button>
             <button
               type="button"
               className="chip"
               onClick={() => sample('Draft a launch brief for the marketing team.')}
             >
-              Draft demo
+              Write a proposal
             </button>
-            <button type="button" className="chip" onClick={() => sample('Launch our v2 on all social channels')}>
-              Social launch demo
+            <button type="button" className="chip" onClick={() => sample('Launch our product on all social channels')}>
+              Plan a launch
             </button>
           </div>
 
-          <div className="preview-card">
-            <div className="preview-head">
-              <p className="preview-label">Proxima&apos;s read</p>
-            </div>
-            <GoalUnderstanding intent={lastIntent} goal={inputValue} />
+          <div className={`preview-card ${planReady ? 'plan-ready' : ''}`}>
+            <div className="preview-head"><p className="preview-label">{planReady ? 'Goal received' : 'Here’s the plan'}</p></div>
+            {planReady ? <><p className="plan-ready-title">I’ve prepared the next steps.</p><GoalUnderstanding intent={lastIntent} goal={inputValue} /><div className="action-row plan-actions"><button type="button" className="primary" onClick={createWorkflow}>Start this work</button><button type="button" className="secondary" onClick={saveDraft}>Save as draft</button><button type="button" className="ghost" onClick={() => setPlanReady(false)}>Edit plan</button></div></> : <GoalUnderstanding intent={lastIntent} goal={inputValue} />}
           </div>
         </aside>
 
         <section className="panel board">
           <div className="panel-header">
             <div>
-              <p className="eyebrow with-icon"><Icon name="workflow" size={14} /> Task board</p>
-              <h2>Workflow graph</h2>
+              <p className="eyebrow with-icon"><Icon name="workflow" size={14} /> Recent work</p>
+              <h2>What I&apos;m working on</h2>
             </div>
-            <span className="muted">{workflows.length} workflows</span>
+            <span className="muted">{workflows.length} items</span>
           </div>
 
           <div className="workflow-list">
@@ -497,14 +618,14 @@ function DashboardShell() {
                     </div>
                     <span className={`pill ${workflow.status === 'waiting_approval' ? 'warn' : workflow.status === 'running' ? 'running' : workflow.status === 'completed' ? 'ok' : workflow.status === 'cancelled' || workflow.status === 'failed' ? 'danger' : 'neutral'}`}>
                       {workflow.status === 'waiting_approval'
-                        ? 'Waiting approval'
+                        ? 'Needs your approval'
                         : workflow.status === 'completed'
                           ? 'Completed'
                           : workflow.status === 'running'
-                            ? 'Running'
-                            : workflow.status === 'cancelled' || workflow.status === 'failed'
+                            ? 'Working'
+                            : workflow.status === 'cancelled'
                               ? 'Cancelled'
-                              : workflow.status === 'failed' ? 'Failed' : 'Draft'}
+                              : workflow.status === 'failed' ? 'Could not finish' : 'Draft'}
                     </span>
                   </div>
 
@@ -522,8 +643,8 @@ function DashboardShell() {
                       />
                     </div>
                     <div className="workflow-meta">
-                      <span>{workflow.steps.length} steps</span>
-                      <span>{workflow.artifacts.length} artifacts</span>
+                      <span>{workflow.steps.length} items</span>
+                      <span>{workflow.artifacts.length} results</span>
                       <span>{new Date(workflow.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                     </div>
                   </div>
@@ -531,34 +652,29 @@ function DashboardShell() {
               ))
             ) : (
               <div className="details-empty compact">
-                No workflows yet. Submit a goal and Proxima will split it into a visible plan.
+                Nothing is in progress yet. Tell Proxima what you want to accomplish to get started.
               </div>
             )}
           </div>
 
-          <div className="graph-wrapper">
-            <DAGVisualizer
-              workflow={selectedWorkflow}
-              onNodeSelect={(node) => {
-                setSelectedNode(node);
-                if (node?.step?.isApprovalGate && node.step.status === 'waiting_approval') {
-                  setApprovalWorkflow(selectedWorkflow);
-                }
-              }}
-            />
-          </div>
-          <section className="terminal-panel">
-            <div className="panel-header"><div><p className="eyebrow with-icon"><Icon name="activity" size={14} /> Workflow activity</p><h2>Activity log</h2><p className="muted">Saved workflow events update as actions are completed.</p></div></div>
-            <TerminalLog entries={selectedWorkflow?.auditTrail || []} />
-          </section>
+          {selectedWorkflow ? <section className="work-progress-card">
+            <div><p className="eyebrow">{selectedWorkflow.status === 'completed' ? 'Done 🎉' : selectedWorkflow.status === 'waiting_approval' ? 'Waiting for you' : selectedWorkflow.status === 'draft' ? 'Saved for later' : selectedWorkflow.status === 'deferred' ? 'Decision deferred' : 'Working now'}</p><h3>{selectedWorkflow.goalText}</h3><p className="muted">{selectedWorkflow.status === 'waiting_approval' ? 'I need your approval before I continue.' : selectedWorkflow.status === 'completed' ? 'Everything for this request is ready.' : selectedWorkflow.status === 'draft' ? 'This plan is saved and has not started.' : selectedWorkflow.status === 'deferred' ? 'This decision is saved for later.' : selectedWorkflow.status === 'cancelled' ? 'This request was cancelled.' : 'I’m preparing the next steps.'}</p></div>
+            <div className="progress-track"><div className="progress-fill" style={{ width: `${progressFor(selectedWorkflow)}%` }} /></div>
+            <MissionTimeline work={selectedWorkflow} />
+            <div className="workflow-meta"><span>{progressFor(selectedWorkflow)}% ready</span><span>{selectedWorkflow.steps.length} steps</span><button type="button" className="ghost" onClick={() => setShowAdvanced((visible) => !visible)}>{showAdvanced ? 'Hide details' : 'View details'}</button></div>
+          </section> : null}
+          {showAdvanced ? <section className="advanced-work-details">
+            <div className="graph-wrapper"><DAGVisualizer workflow={selectedWorkflow} onNodeSelect={(node) => { setSelectedNode(node); if (node?.step?.isApprovalGate && node.step.status === 'waiting_approval') setApprovalWorkflow(selectedWorkflow); }} /></div>
+            <section className="terminal-panel"><div className="panel-header"><div><p className="eyebrow with-icon"><Icon name="activity" size={14} /> Detailed activity</p><h2>Work history</h2><p className="muted">Saved updates from this request.</p></div></div><TerminalLog entries={selectedWorkflow?.auditTrail || []} /></section>
+          </section> : null}
         </section>
 
         <aside className="stack">
           <section className="panel">
             <div className="panel-header">
               <div>
-                <p className="eyebrow with-icon"><Icon name="shield" size={14} /> Approval center</p>
-                <h2>Pending gates</h2>
+                <p className="eyebrow with-icon"><Icon name="shield" size={14} /> Your decisions</p>
+                <h2>Needs your approval</h2>
               </div>
             </div>
             <div className="approval-center">
@@ -567,18 +683,18 @@ function DashboardShell() {
                   <article className="approval-card" key={workflow.id}>
                     <div className="approval-head">
                       <div>
-                        <p className="workflow-kicker">Approval required</p>
+                        <p className="workflow-kicker">I need your approval</p>
                         <h3>{workflow.goalText}</h3>
                       </div>
-                      <span className="pill warn">Pending</span>
+                      <span className="pill warn">Review needed</span>
                     </div>
                     <div className="workflow-meta">
                       <span>{workflow.parsed.action}</span>
-                      <span>{workflow.steps.length} steps</span>
+                      <span>{workflow.steps.length} planned steps</span>
                     </div>
                     <div className="action-row">
                       <button type="button" className="primary" onClick={() => setApprovalWorkflow(workflow)}>
-                        <Icon name="search" size={15} /> Review
+                        <Icon name="search" size={15} /> Review it
                       </button>
                       <button type="button" className="secondary" onClick={() => handleCancel(workflow)}>
                         <Icon name="x" size={15} /> Cancel
@@ -587,7 +703,7 @@ function DashboardShell() {
                   </article>
                 ))
               ) : (
-                <div className="details-empty compact">No actions are waiting on human approval right now.</div>
+                <div className="details-empty compact">Nothing needs your approval right now.</div>
               )}
             </div>
           </section>
@@ -595,8 +711,8 @@ function DashboardShell() {
           <section className="panel">
             <div className="panel-header">
               <div>
-                <p className="eyebrow with-icon"><Icon name="brain" size={14} /> Memory mesh</p>
-                <h2>Known contacts</h2>
+                <p className="eyebrow with-icon"><Icon name="brain" size={14} /> What I remember</p>
+                <h2>Useful context</h2>
               </div>
             </div>
             <div className="memory-list">
@@ -621,13 +737,13 @@ function DashboardShell() {
         </aside>
       </section>
 
-      <section className="panel details-panel">
+      <section id="work-details" className="panel details-panel">
         <div className="panel-header">
           <div>
-            <p className="eyebrow with-icon"><Icon name="terminal" size={14} /> Execution details</p>
-            <h2>Selected run</h2>
+            <p className="eyebrow with-icon"><Icon name="target" size={14} /> Work details</p>
+            <h2>Your request</h2>
           </div>
-          <span className="mono muted">{selectedWorkflow ? selectedWorkflow.id : 'No workflow selected'}</span>
+          <span className="mono muted">{selectedWorkflow ? selectedWorkflow.id : 'No work selected'}</span>
         </div>
 
         {selectedWorkflow ? (
@@ -635,7 +751,7 @@ function DashboardShell() {
             <section className="detail-summary">
               <div className="detail-title">
                 <div>
-                  <p className="eyebrow">Goal</p>
+            <p className="eyebrow">What you asked for</p>
                   <div className="goal-text">{selectedWorkflow.goalText}</div>
                 </div>
                 <div className="action-row">
@@ -643,21 +759,31 @@ function DashboardShell() {
                     className={`pill ${selectedWorkflow.status === 'waiting_approval' ? 'warn' : selectedWorkflow.status === 'running' ? 'running' : selectedWorkflow.status === 'completed' ? 'ok' : selectedWorkflow.status === 'cancelled' ? 'danger' : 'neutral'}`}
                   >
                     {selectedWorkflow.status === 'waiting_approval'
-                      ? 'Waiting approval'
+                      ? 'Needs your approval'
                       : selectedWorkflow.status === 'completed'
                         ? 'Completed'
                         : selectedWorkflow.status === 'running'
-                          ? 'Running'
+                        ? 'Working'
                           : selectedWorkflow.status === 'cancelled'
                             ? 'Cancelled'
                             : 'Draft'}
                   </span>
                   <button type="button" className="secondary" onClick={() => handleCancel(selectedWorkflow)}>
-                    <Icon name="x" size={15} /> Cancel
+                    <Icon name="x" size={15} /> Cancel work
                   </button>
                   {selectedWorkflow.status === 'waiting_approval' ? (
                     <button type="button" className="primary" onClick={() => setApprovalWorkflow(selectedWorkflow)}>
-                      <Icon name="check" size={15} /> Approve
+                      <Icon name="check" size={15} /> Approve and continue
+                    </button>
+                  ) : null}
+                  {selectedWorkflow.status === 'draft' ? (
+                    <button type="button" className="primary" onClick={() => startDraft(selectedWorkflow)}>
+                      <Icon name="play" size={15} /> Start this work
+                    </button>
+                  ) : null}
+                  {selectedWorkflow.status === 'deferred' ? (
+                    <button type="button" className="primary" onClick={() => resumeDeferred(selectedWorkflow)}>
+                      <Icon name="clock" size={15} /> Review now
                     </button>
                   ) : null}
                 </div>
@@ -665,7 +791,7 @@ function DashboardShell() {
 
               <div className="detail-metrics">
                 <div className="detail-metric">
-                  <span className="metric-label">Progress</span>
+                  <span className="metric-label">Ready</span>
                   <span className="metric-value">
                     {Math.round(
                       (selectedWorkflow.steps.filter((step) => step.status === 'done' || step.status === 'skipped').length /
@@ -676,11 +802,11 @@ function DashboardShell() {
                   </span>
                 </div>
                 <div className="detail-metric">
-                  <span className="metric-label">Artifacts</span>
+                  <span className="metric-label">Results</span>
                   <span className="metric-value">{selectedWorkflow.artifacts.length}</span>
                 </div>
                 <div className="detail-metric">
-                  <span className="metric-label">Updated</span>
+                  <span className="metric-label">Last update</span>
                   <span className="metric-value">
                     {new Date(selectedWorkflow.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
@@ -700,7 +826,7 @@ function DashboardShell() {
 
             <section className="detail-grid">
               <article className="detail-card">
-                <p className="eyebrow">What Proxima is doing</p>
+                <p className="eyebrow">The plan</p>
                 <GoalUnderstanding
                   intent={selectedWorkflow.parsed}
                   goal={selectedWorkflow.goalText}
@@ -711,23 +837,24 @@ function DashboardShell() {
               </article>
 
               <article className="detail-card">
-                <p className="eyebrow">Artifacts</p>
+                <p className="eyebrow">Ready for you</p>
                 <div className="artifacts">
                   {selectedWorkflow.artifacts.length ? (
                     selectedWorkflow.artifacts.map((artifact) => (
                       <ArtifactCard key={artifact.id} artifact={artifact} onDownload={(nextArtifact) => downloadArtifact(selectedWorkflow, nextArtifact)} />
                     ))
                   ) : (
-                    <div className="details-empty compact">No artifacts have been generated yet.</div>
+                    <div className="details-empty compact">Nothing is ready to review yet.</div>
                   )}
                 </div>
               </article>
 
             </section>
+            <CompletionScreen work={selectedWorkflow} onViewDetails={() => document.getElementById('work-details')?.scrollIntoView({ behavior: 'smooth' })} />
           </div>
         ) : (
           <div className="details-empty">
-            Create a workflow to inspect its steps, approvals, artifacts, and audit trail.
+            Start with a request and Proxima will keep the plan and results here.
           </div>
         )}
       </section>
@@ -736,6 +863,7 @@ function DashboardShell() {
           workflow={approvalWorkflow}
           onClose={() => setApprovalWorkflow(null)}
           onApprove={handleApprove}
+          onDefer={handleDefer}
           onCancel={() => {
             handleCancel(approvalWorkflow);
             setApprovalWorkflow(null);

@@ -21,7 +21,7 @@ export default function RegisterPage() {
     try {
       const result = await apiFetch('/api/auth/register', { method: 'POST', body: JSON.stringify({ email, password }) });
       localStorage.setItem('proxima_token', result.token);
-      localStorage.setItem('proxima_refresh_token', result.refreshToken);
+      if (result.refreshToken) localStorage.setItem('proxima_refresh_token', result.refreshToken);
       router.replace('/dashboard');
     } catch (err) {
       setError(err.message);

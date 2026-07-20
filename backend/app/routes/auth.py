@@ -33,10 +33,19 @@ def audit(user_id: str | None, event: str) -> None:
         store.data["audit"].append({"id":store.id(), "userId":user_id, "event":event, "at":datetime.now(timezone.utc).isoformat()})
         store.save()
 
-def allow(email: str) -> None:
+def normalized_email(email: str) -> str:
+    return email.strip().casefold()
+
+
+def ensure_not_rate_limited(email: str) -> None:
     now = time(); bucket = attempts[email]
     while bucket and bucket[0] < now - 60: bucket.popleft()
     if len(bucket) >= 5: raise HTTPException(status_code=429, detail="Too many login attempts. Try again in a minute.")
+
+
+def record_failed_attempt(email: str) -> None:
+    now = time(); bucket = attempts[email]
+    while bucket and bucket[0] < now - 60: bucket.popleft()
     bucket.append(now)
 
 
@@ -66,21 +75,25 @@ def send_reset_email(email: str, raw_token: str) -> None:
 
 @router.post("/register", status_code=201)
 def register(payload: RegistrationCredentials, response: Response) -> dict:
+    email = normalized_email(str(payload.email))
     with store.lock:
-        if any(user["email"] == payload.email for user in store.data["users"]):
+        if any(normalized_email(user["email"]) == email for user in store.data["users"]):
             raise HTTPException(status_code=409, detail="An account already exists for this email.")
-        user = {"id": store.id(), "email": payload.email, "passwordHash": passwords.hash(payload.password), "createdAt": datetime.now(timezone.utc).isoformat()}
+        user = {"id": store.id(), "email": email, "passwordHash": passwords.hash(payload.password), "createdAt": datetime.now(timezone.utc).isoformat()}
         store.data["users"].append(user); store.save()
     audit(user["id"], "registered")
     result = tokens(user); set_auth_cookies(response, result); return result
 
 @router.post("/login")
 def login(payload: Credentials, response: Response) -> dict:
-    allow(payload.email)
-    user = next((item for item in store.data["users"] if item["email"] == payload.email), None)
+    email = normalized_email(str(payload.email))
+    ensure_not_rate_limited(email)
+    user = next((item for item in store.data["users"] if normalized_email(item["email"]) == email), None)
     if not user or not passwords.verify(payload.password, user["passwordHash"]):
+        record_failed_attempt(email)
         audit(user["id"] if user else None, "login_failed")
         raise HTTPException(status_code=401, detail="Invalid email or password.")
+    attempts.pop(email, None)
     audit(user["id"], "logged_in")
     result = tokens(user); set_auth_cookies(response, result); return result
 
@@ -119,7 +132,8 @@ def forgot_password(payload: PasswordResetRequest) -> dict:
     """Email a one-time reset token without exposing whether an address exists."""
     if not settings.proxima_expose_reset_token and not reset_email_configured():
         raise HTTPException(status_code=503, detail="Password-reset email is not configured. Contact the service administrator.")
-    user = next((item for item in store.data["users"] if item["email"] == payload.email), None)
+    email = normalized_email(str(payload.email))
+    user = next((item for item in store.data["users"] if normalized_email(item["email"]) == email), None)
     result = {"ok": True, "message": "If an account exists for that email, reset instructions have been sent."}
     if not user:
         return result

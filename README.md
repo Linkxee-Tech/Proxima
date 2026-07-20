@@ -1,29 +1,30 @@
 # Proxima
 
-Proxima is a workspace for turning a work request into a clear, reviewable plan. It is designed for jobs that may send a message, publish a post, or change something in an external service. The app shows the planned steps first and waits for approval before it takes those actions.
+Proxima is a work companion for turning a written request into a clear plan. It prepares the next steps, keeps the work in one place, and asks for approval before an action is sent to a connected service.
 
-## What you can do with it
+## What it does
 
-- Turn a written request into a workflow with visible steps and status.
-- Review and approve work before a message, post, or other external action is sent.
-- Keep workflow history, artifacts, and approval records in one place.
-- Draft social posts and manage connected tools from the dashboard.
-- Use live workflow updates through an authenticated WebSocket connection.
+- Capture a work request and present a reviewable plan.
+- Keep progress, approvals, results, and recent activity together.
+- Draft social campaigns for selected platforms.
+- Connect supported services through their own sign-in flows.
+- Send a user-authored message through a connected Slack workspace.
+- Deliver live updates to signed-in users.
 
-The project has a Next.js frontend and a FastAPI backend. It can keep data in a local JSON file for development or use PostgreSQL for a deployed environment.
+Proxima has a Next.js web application and a FastAPI service. Local development uses a JSON data store. A PostgreSQL-compatible store can be selected for hosted environments.
 
 ## Project layout
 
 ```text
-backend/       FastAPI routes, authentication, storage, integrations, and tests
-frontend/      Next.js application and dashboard
-docs/          Architecture notes
+backend/       API, authentication, data storage, integrations, and tests
+frontend/      Web application and public pages
+docs/          Technical notes for contributors
 .env.example   Backend environment template
 ```
 
-## Run it locally
+## Run locally
 
-### 1. Start the backend
+### Start the backend
 
 ```powershell
 cd backend
@@ -34,11 +35,11 @@ Copy-Item ..\.env.example .env
 .\start-local.ps1
 ```
 
-Open `http://localhost:8000/` for the API docs or `http://localhost:8000/health` for the health check.
+Open `http://localhost:8000/` for the API reference or `http://localhost:8000/health` for the health check.
 
-`0.0.0.0` is a server bind address. Do not enter `http://0.0.0.0:8000/` in a browser.
+`0.0.0.0` is only a server bind address. Use `http://localhost:8000/` in a browser.
 
-### 2. Start the frontend
+### Start the frontend
 
 ```powershell
 cd frontend
@@ -47,13 +48,13 @@ Copy-Item .env.example .env.local
 npm run dev
 ```
 
-Open `http://localhost:3000`, create an account, and start a workflow.
+Open `http://localhost:3000`, create an account, and submit a request.
 
 ## Configuration
 
-The backend reads `backend/.env`; the frontend reads `frontend/.env.local`. Both files are ignored by Git.
+The backend reads `backend/.env`; the frontend reads `frontend/.env.local`. Do not commit either file.
 
-For a local demo, the defaults in `.env.example` use local storage. For a hosted environment, set the following values in the hosting provider's environment settings:
+For a hosted environment, configure these values with your hosting provider:
 
 ```env
 # Backend
@@ -65,7 +66,8 @@ PROXIMA_CORS_ORIGINS=https://your-frontend.example
 PROXIMA_PUBLIC_APP_URL=https://your-frontend.example
 PROXIMA_PUBLIC_API_URL=https://your-api.example
 PROXIMA_FRONTEND_CALLBACK_URL=https://your-frontend.example/dashboard/integrations
-# Required to deliver password-reset links in production.
+
+# Password reset email
 PROXIMA_SMTP_HOST=smtp.example.com
 PROXIMA_SMTP_PORT=587
 PROXIMA_SMTP_USERNAME=...
@@ -78,26 +80,26 @@ PROXIMA_API_BASE_URL=https://your-api.example
 NEXT_PUBLIC_PROXIMA_WS_URL=wss://your-api.example/ws
 ```
 
-Add OpenAI, OAuth, Redis, Pinecone, and WhatsApp credentials only when you need those features. Never put secrets in the repository. Password resets require a working SMTP provider in production; the backend never returns reset tokens to a hosted browser.
+Add provider credentials only for the services you intend to use. Keep all secrets in the hosting provider’s environment settings. In production, password reset links require a working SMTP provider.
 
-## Deployment
+## Deployment checklist
 
-The backend includes a `Dockerfile` and `Procfile`. The frontend is a standard Next.js app and can be deployed to Vercel or any Node host.
+Before release, confirm that:
 
-Before calling a deployment ready, check all of the following in the hosted environment:
+1. The backend health endpoint is public.
+2. A new user can register, sign in, and reset a password.
+3. The web application connects to the secure WebSocket endpoint.
+4. A request can reach an approval step and be completed.
+5. Persistent data survives an application restart.
+6. Every enabled provider callback matches its deployed URL exactly.
 
-1. The backend health endpoint responds publicly.
-2. A fresh user can register, sign in, and refresh a session.
-3. The dashboard connects to `wss://` without WebSocket errors.
-4. A workflow reaches an approval step and can be completed.
-5. The database survives an application restart.
-6. Any OAuth callback used in the demo matches the deployed URL.
+The backend includes a `Dockerfile` and `Procfile`. The frontend can be deployed to Vercel or another Node.js host.
 
-For a single-machine Docker development setup, run `docker compose up --build` from the repository root. It exposes the backend on port 8000 and the frontend on port 3001.
+For a local Docker setup, run `docker compose up --build` from the repository root. The backend uses port 8000 and the frontend uses port 3001.
 
-## Tests
+## Checks
 
-Backend checks:
+Backend:
 
 ```powershell
 cd backend
@@ -105,22 +107,14 @@ cd backend
 .\.venv\Scripts\python.exe -m pytest tests -q
 ```
 
-Frontend checks:
+Frontend:
 
 ```powershell
 cd frontend
-npm run type-check
+npm run typecheck
 npm run build
 ```
 
-The latest local check completed with 13 passing backend tests and a successful frontend production build.
-
-## Build Week notes
-
-This project was developed and refined in Codex during OpenAI Build Week. Codex was used to trace the frontend and backend, implement and test the authentication and WebSocket flow, review local startup, and verify the production build. GPT-5.6 is configured for the workflow-planning path in the backend.
-
-For the Devpost entry, include the primary Codex `/feedback` session ID and a short demo that shows a real workflow from request to approval. Keep the video, project description, and README consistent with what is in this repository.
-
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is available under the [MIT License](LICENSE).

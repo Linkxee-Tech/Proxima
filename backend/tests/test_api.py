@@ -203,6 +203,17 @@ def test_new_passwords_must_be_between_six_and_eight_characters() -> None:
     assert long.status_code == 422
 
 
+def test_login_normalizes_email_and_only_failed_attempts_are_rate_limited() -> None:
+    email = f"Case-{uuid4()}@Example.COM"
+    assert client.post("/api/v1/auth/register", json={"email": email, "password": PASSWORD}).status_code == 201
+    # A successful login is case-insensitive and does not consume a failed-attempt slot.
+    for _ in range(6):
+        assert client.post("/api/v1/auth/login", json={"email": email.lower(), "password": PASSWORD}).status_code == 200
+    for _ in range(5):
+        assert client.post("/api/v1/auth/login", json={"email": email, "password": "wrongpw"}).status_code == 401
+    assert client.post("/api/v1/auth/login", json={"email": email, "password": PASSWORD}).status_code == 429
+
+
 def test_social_draft_and_approval_workflow(monkeypatch) -> None:
     auth = headers()
     response = client.post("/api/v1/social/draft", json={"goal":"Launch v2", "platforms":["twitter", "linkedin"]}, headers=auth)
@@ -236,7 +247,7 @@ def test_approval_endpoint_advances_its_social_task() -> None:
     updated = response.json()
     assert next(task for task in updated["tasks"] if task["id"] == "approval-twitter")["status"] == "done"
     assert next(task for task in updated["tasks"] if task["id"] == "twitter")["status"] == "done"
-    assert updated["status"] == "waiting_approval"
+    assert updated["status"] == "completed"
 
 
 def test_intent_endpoint_accepts_the_goal_payload_used_by_the_dashboard() -> None:
@@ -261,5 +272,52 @@ def test_artifact_download_and_prometheus_metrics_are_available() -> None:
     artifact = workflow["artifacts"][0]
     response = client.get(f"/api/v1/workflows/{workflow['id']}/artifacts/{artifact['id']}/download", headers=auth)
     assert response.status_code == 200
-    assert response.text == "Create a launch brief"
+    assert "Goal: Create a launch brief" in response.text
+    assert "Prepared steps:" in response.text
     assert client.get("/api/v1/metrics/prometheus").status_code == 200
+
+
+def test_saved_draft_can_be_started_and_deferred_for_later() -> None:
+    auth = headers()
+    draft = client.post("/api/v1/workflows/drafts", json={"goalText": "Send a customer update email"}, headers=auth)
+    assert draft.status_code == 201
+    assert draft.json()["status"] == "draft"
+
+    started = client.post(f"/api/v1/workflows/{draft.json()['id']}/start", headers=auth)
+    assert started.status_code == 200
+    workflow = started.json()
+    assert workflow["status"] == "waiting_approval"
+    gate = next(task for task in workflow["tasks"] if task.get("isApprovalGate"))
+
+    deferred = client.post(f"/api/v1/approvals/{workflow['id']}:{gate['id']}/defer", headers=auth)
+    assert deferred.status_code == 200
+    assert deferred.json()["status"] == "deferred"
+    current = client.get(f"/api/v1/workflows/{workflow['id']}", headers=auth).json()
+    assert current["status"] == "deferred"
+
+    resumed = client.post(f"/api/v1/approvals/{workflow['id']}:{gate['id']}/resume", headers=auth)
+    assert resumed.status_code == 200
+    assert resumed.json()["status"] == "waiting_approval"
+
+
+def test_batch_approval_validates_and_resolves_every_selected_item() -> None:
+    auth = headers()
+    first = client.post("/api/v1/workflows", json={"goalText": "Send a customer update email"}, headers=auth).json()
+    second = client.post("/api/v1/workflows", json={"goalText": "Schedule a project meeting"}, headers=auth).json()
+    approval_ids = []
+    for workflow in (first, second):
+        gate = next(task for task in workflow["tasks"] if task.get("isApprovalGate"))
+        approval_ids.append(f"{workflow['id']}:{gate['id']}")
+    response = client.post("/api/v1/approvals/batch", json={"approval_ids": approval_ids, "action": "approve"}, headers=auth)
+    assert response.status_code == 200
+    assert len(response.json()["items"]) == 2
+    assert all(item["status"] == "completed" for item in response.json()["items"])
+
+
+def test_blueprint_returns_the_signed_in_users_saved_knowledge() -> None:
+    auth = headers()
+    memory = client.post("/api/v1/memory", json={"text": "Keep client updates brief."}, headers=auth)
+    assert memory.status_code == 201
+    blueprint = client.get("/api/v1/blueprint", headers=auth)
+    assert blueprint.status_code == 200
+    assert blueprint.json()["memory"][0]["text"] == "Keep client updates brief."

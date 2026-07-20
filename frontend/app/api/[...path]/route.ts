@@ -1,6 +1,10 @@
 import { NextRequest } from 'next/server';
 
-const backendBaseUrl = process.env.PROXIMA_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL;
+// Local development should work immediately after starting FastAPI on port 8000.
+// Hosted deployments must provide an explicit server-side proxy target.
+const backendBaseUrl = process.env.PROXIMA_API_BASE_URL
+  || process.env.NEXT_PUBLIC_API_URL
+  || (process.env.NODE_ENV === 'development' ? 'http://localhost:8000' : undefined);
 
 async function proxy(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   const { path } = await context.params;

@@ -1,50 +1,40 @@
-# Proxima OS architecture
+# Proxima architecture
 
-This diagram reflects the current repository implementation. The editable FigJam version is available here:
-
-[Open the Proxima OS Architecture diagram in FigJam](https://www.figma.com/online-whiteboard/create-diagram/7cb59e2d-6bb7-408c-ba6b-a41edf1d7715?utm_source=other&utm_content=edit_in_figjam&oai_id=v1%2FDbNRtSfRjZu1YxQp4R4Q7Qn3QS1H6ox91lvA3M5cVr0bZqV3Cml1b4&request_id=91084815-d651-4919-be87-b73141205548&architecture=true)
+This note describes the repository as it runs today. It is intended for contributors who need to find the main request paths and service boundaries.
 
 ```mermaid
 flowchart LR
-    subgraph client ["Client"]
-        webApp["Browser and Next.js web app"]
-    end
-
-    subgraph gateway ["Gateway"]
-        ingress["Next.js API proxy and FastAPI ingress"]
-    end
-
-    subgraph service ["Core Services"]
-        fastapiApi["FastAPI API, auth, workflows, approvals, scheduler, and WebSocket"]
-    end
-
-    subgraph datastore ["Data Stores"]
-        stateFile["Local JSON state file"]
-        postgres["Optional PostgreSQL or Supabase"]
-        uploads["Uploads volume and media files"]
-    end
-
-    subgraph external ["External Integrations"]
-        openai["OpenAI API for social text and image generation"]
-        oauthProviders["OAuth providers: Google, Slack, Notion, X, LinkedIn, Facebook"]
-        whatsapp["WhatsApp Cloud API integration"]
-    end
-
-    webApp -->|"HTTPS API and WebSocket ingress"| ingress
-    ingress -->|"Routes REST and realtime traffic"| fastapiApi
-    fastapiApi -->|"Reads and writes state"| stateFile
-    fastapiApi -->|"Optional persistent state"| postgres
-    fastapiApi -->|"Stores uploaded and generated media"| uploads
-    fastapiApi -.->|"Generates social drafts and images"| openai
-    fastapiApi -.->|"Exchanges OAuth authorization codes"| oauthProviders
-    fastapiApi -.->|"Uses configured messaging credentials"| whatsapp
+    browser["Browser"] --> web["Next.js web application"]
+    web --> proxy["API proxy"]
+    proxy --> api["FastAPI service"]
+    api --> data["Local JSON store or PostgreSQL"]
+    api --> media["Uploaded media"]
+    api --> providers["Connected service providers"]
+    api --> realtime["Authenticated WebSocket"]
 ```
 
-## Runtime notes
+## Request flow
 
-- `frontend/app/api/[...path]/route.ts` proxies browser API requests to the backend `/api/v1` mount.
-- The FastAPI process owns authentication, password recovery, workflows, approvals, memory, integrations, social publishing, metrics, and the authenticated `/ws` endpoint.
-- Local JSON state is the default storage adapter. PostgreSQL/Supabase is an optional replacement selected by `PROXIMA_STORAGE_BACKEND=postgres`.
-- Uploaded and generated media is stored below `PROXIMA_DATA_DIR/uploads` and served through `/media`.
-- OpenAI and OAuth providers are optional external boundaries and require their corresponding environment variables.
-- WhatsApp is represented as a server-managed integration boundary. It remains unconfigured without `WHATSAPP_ACCESS_TOKEN` and `WHATSAPP_PHONE_NUMBER_ID`; provider delivery still depends on the configured integration action.
+1. The browser sends requests to the Next.js application.
+2. The application proxy forwards API requests to the FastAPI `/api/v1` routes.
+3. FastAPI authenticates the request, reads or updates stored data, and returns a response.
+4. Signed-in browsers receive work updates through `/ws`.
+
+## Main components
+
+- `frontend/app/api/[...path]/route.ts` forwards browser API requests to the backend.
+- `backend/app/routes/auth.py` handles registration, sign-in, token refresh, sign-out, and password recovery.
+- `backend/app/routes/workflows.py` stores requests, plans, approvals, results, and activity records.
+- `backend/app/routes/integrations.py` manages provider connection flows.
+- `backend/app/routes/tools.py` contains supported provider actions, including Slack message delivery.
+- `backend/app/core/store.py` selects the local or PostgreSQL-backed store.
+
+## Storage and media
+
+Local development uses the data directory set by `PROXIMA_DATA_DIR`. Hosted environments can use PostgreSQL by setting `PROXIMA_STORAGE_BACKEND=postgres` and `PROXIMA_DATABASE_URL`.
+
+Uploaded media is stored below `PROXIMA_DATA_DIR/uploads` and served from `/media`.
+
+## Connected services
+
+Each connected provider requires its own credentials and approved callback URL. The application stores connection credentials in encrypted form. A connection alone does not guarantee every provider action is available; an action must be implemented and enabled by that provider.

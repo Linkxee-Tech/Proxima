@@ -5,7 +5,9 @@ pydantic-settings==2.7.1
 email-validator==2.2.0
 PyJWT==2.10.1
 passlib[bcrypt]==1.7.4
-bcrypt==4.2.1
+# Passlib 1.7.4 reads bcrypt's legacy version metadata; 4.0.1 keeps local
+# authentication startup free of the compatibility warning emitted by newer bcrypt releases.
+bcrypt==4.0.1
 httpx==0.28.1
 openai==1.59.7
 pinecone-client==5.0.1
