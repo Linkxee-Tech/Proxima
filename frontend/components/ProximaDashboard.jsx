@@ -145,8 +145,13 @@ function DashboardShell() {
         setRealtimeConnected(false);
         return;
       }
-      const fallback = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://localhost:8000/ws${token ? `?token=${encodeURIComponent(token)}` : ''}`;
-      const target = configured ? `${configured}${configured.includes('?') ? '&' : '?'}token=${encodeURIComponent(token || '')}` : fallback;
+      const hostedBrowser = !['localhost', '127.0.0.1'].includes(window.location.hostname);
+      const configuredIsLocal = configured ? /^wss?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?\//i.test(configured) : false;
+      const fallback = hostedBrowser
+        ? 'wss://proxima-8d3w.onrender.com/ws'
+        : `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://localhost:8000/ws`;
+      const socketBase = configured && !(hostedBrowser && configuredIsLocal) ? configured : fallback;
+      const target = `${socketBase}${socketBase.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`;
       socket = new WebSocket(target);
       socket.onopen = () => { setRealtimeConnected(true); setError(null); };
       socket.onmessage = (event) => {

@@ -1,6 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "env": {
-    "PROXIMA_API_BASE_URL": "https://proxima-8d3w.onrender.com"
+    "PROXIMA_API_BASE_URL": "https://proxima-8d3w.onrender.com",
+    "NEXT_PUBLIC_PROXIMA_WS_URL": "wss://proxima-8d3w.onrender.com/ws",
+    "NEXT_PUBLIC_WS_URL": "wss://proxima-8d3w.onrender.com/ws"
   }
 }
