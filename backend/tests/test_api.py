@@ -418,6 +418,19 @@ def test_recurring_campaign_activity_includes_generated_posts() -> None:
     assert next(post for post in activity.json()["items"] if post["id"] == item["recentPosts"][0]["id"])["recurringCampaignId"] == campaign["id"]
 
 
+def test_recurring_campaign_accepts_a_browser_iana_timezone() -> None:
+    response = client.post(
+        "/api/v1/social/recurring",
+        json={
+            "topic": "Cyber security", "platforms": ["twitter"], "cadence": "daily",
+            "scheduled_for": "2099-07-22T17:00:00", "schedule_timezone": "Africa/Lagos",
+        },
+        headers=headers(),
+    )
+    assert response.status_code == 201
+    assert response.json()["nextRun"].startswith("2099-07-22T16:00:00")
+
+
 def test_approval_endpoint_advances_its_social_task() -> None:
     auth = headers()
     workflow = client.post("/api/v1/deploy", json={"goalText": "Launch v2 on Twitter"}, headers=auth).json()
