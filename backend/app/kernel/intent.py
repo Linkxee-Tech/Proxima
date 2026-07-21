@@ -117,17 +117,19 @@ def fallback_work_product(goal: str) -> dict:
             ),
         }
     return {
-        "title": "Prepared work brief",
-        "type": "general",
+        "title": "Custom work brief",
+        "type": "custom",
         "content": (
-            "WORK BRIEF\n"
+            "CUSTOM WORK BRIEF\n"
             f"Requested outcome: {goal}\n\n"
-            "Scope\n"
+            "SCOPE AND DELIVERABLES\n"
             "• Define the finished result and the people it is for.\n"
             "• List the information, files, and decisions needed.\n"
             "• Prepare a first draft or action plan for review.\n\n"
-            "Next actions\n"
-            "1. Confirm missing details and deadline.\n2. Complete the draft.\n3. Review before any external action."
+            "WORK PLAN\n"
+            "1. Confirm the outcome, audience, and deadline.\n2. List missing information and dependencies.\n3. Complete the draft or action plan.\n4. Review facts, owners, and hand-off details before sharing.\n\n"
+            "REVIEW CHECKLIST\n"
+            "Confirm the result fits its audience, the next actions are clear, and any external step has approval."
         ),
     }
 
@@ -172,6 +174,8 @@ async def parse_goal(goal: str) -> dict:
                         "ready-to-review office-work draft for the user's request: for meetings include a "
                         "meeting plan and invitation; for email include a subject and complete email; for research "
                         "include a research brief and report outline; for proposals include a structured proposal. "
+                        "For any other office task, create a custom work brief with the requested outcome, audience, "
+                        "deliverables, missing inputs, a practical step-by-step plan, risks or dependencies, and a review checklist. "
                         "Use only facts supplied by the user. Mark missing details as needing confirmation. "
                         "Never claim that an email, calendar event, or other external action has happened."
                     ),

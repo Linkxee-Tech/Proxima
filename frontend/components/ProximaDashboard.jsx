@@ -30,6 +30,16 @@ function firstNameFromEmail(email = '') {
   return firstPart ? firstPart.charAt(0).toUpperCase() + firstPart.slice(1) : '';
 }
 
+function socialPlatformName(platform = '') {
+  return ({ twitter: 'X / Twitter', linkedin: 'LinkedIn', facebook: 'Facebook Pages', whatsapp: 'WhatsApp Business' }[platform] || platform);
+}
+
+function deliveryText(results = {}) {
+  const entries = Object.entries(results || {});
+  if (!entries.length) return 'Waiting to send';
+  return entries.map(([platform, result]) => `${socialPlatformName(platform)}: ${result.status || 'unknown'}${result.error ? ` - ${result.error}` : ''}`).join(' | ');
+}
+
 function progressFor(workflow) {
   if (!workflow?.steps?.length) return 0;
   return Math.round((workflow.steps.filter((step) => step.status === 'done' || step.status === 'skipped').length / workflow.steps.length) * 100);
@@ -121,6 +131,7 @@ function DashboardShell() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [workflows, setWorkflows] = useState([]);
+  const [recurringPosts, setRecurringPosts] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [selectedNode, setSelectedNode] = useState(null);
   const [blueprint, setBlueprint] = useState(null);
@@ -140,6 +151,7 @@ function DashboardShell() {
   const lastErrorRef = useRef('');
   const sidebarRef = useRef(null);
   const navToggleRef = useRef(null);
+  const goalInputRef = useRef(null);
   const authToken = typeof window === 'undefined' ? '' : window.localStorage.getItem('proxima_token');
 
   const selectedWorkflow = useMemo(
@@ -158,15 +170,17 @@ function DashboardShell() {
     async (preserveSelection = true) => {
       setIsRefreshing(true);
       try {
-        const [nextMetrics, nextBlueprint, nextWorkflows] = await Promise.all([
+        const [nextMetrics, nextBlueprint, nextWorkflows, nextSocialPosts] = await Promise.all([
           apiFetch('/api/metrics'),
           apiFetch('/api/blueprint'),
           apiFetch('/api/workflows'),
+          apiFetch('/api/social/posts'),
         ]);
 
         setMetrics(nextMetrics);
         setBlueprint(nextBlueprint);
         setWorkflows(nextWorkflows.items || []);
+        setRecurringPosts((nextSocialPosts.items || []).filter((post) => post.recurringCampaignId));
         setError(null);
         lastErrorRef.current = '';
 
@@ -231,6 +245,14 @@ function DashboardShell() {
     connect();
     return () => { stopped = true; clearTimeout(reconnectTimer); socket?.close(); };
   }, [loadDashboard, authToken]);
+
+  useEffect(() => {
+    const refreshRecurringPosts = () => apiFetch('/api/social/posts')
+      .then((result) => setRecurringPosts((result.items || []).filter((post) => post.recurringCampaignId)))
+      .catch(() => {});
+    const interval = window.setInterval(refreshRecurringPosts, 30000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     setIsAuthenticated(Boolean(window.localStorage.getItem('proxima_token')));
@@ -482,6 +504,14 @@ function DashboardShell() {
       pushToast('Example added. You can change it before starting.', 'info');
   };
 
+  const startCustomWork = () => {
+    setInputValue('');
+    setLastIntent(null);
+    setPlanReady(false);
+    requestAnimationFrame(() => goalInputRef.current?.focus());
+    pushToast('Describe the outcome, audience, deadline, and any details you already have.', 'info');
+  };
+
   const handleLogout = async () => {
     const refreshToken = window.localStorage.getItem('proxima_refresh_token');
     try {
@@ -518,6 +548,7 @@ function DashboardShell() {
         </div>
         <nav className="command-tabs" aria-label="Workspace sections">
           <a className="active" href="/dashboard">Home</a>
+          <a href="/dashboard#new-request">New request</a>
           <a href="/dashboard/approvals">Approvals {pendingApprovals.length ? `(${pendingApprovals.length})` : ''}</a>
           <a href="/dashboard/work">My Work</a>
           <a href="/dashboard/integrations">Connected Apps</a>
@@ -585,7 +616,7 @@ function DashboardShell() {
             {realtimeConnected ? 'Ready to help' : 'Reconnecting'}
           </div>
         </aside>
-        <aside className="panel rail">
+        <aside id="new-request" className="panel rail">
           <div className="panel-header">
             <div>
               <p className="eyebrow">Start here</p>
@@ -597,10 +628,11 @@ function DashboardShell() {
             <label className="field">
               <span>What would you like to accomplish today?</span>
               <textarea
+                ref={goalInputRef}
                 rows={6}
                 value={inputValue}
                 onChange={(event) => setInputValue(event.target.value)}
-                placeholder="Prepare tomorrow's board meeting"
+                placeholder="Describe any office task - for example, prepare a project handover for the operations team by Friday."
               />
             </label>
 
@@ -639,6 +671,9 @@ function DashboardShell() {
             <button type="button" className="chip" onClick={() => sample('Launch our product on all social channels')}>
               Plan a launch
             </button>
+            <button type="button" className="chip" onClick={startCustomWork}>
+              Any other office task
+            </button>
           </div>
 
           <p className="samples-hint">Or describe any other office task above — for example, prepare a client update, organise a project handover, or create a status report.</p>
@@ -655,7 +690,7 @@ function DashboardShell() {
               <p className="eyebrow with-icon"><Icon name="workflow" size={14} /> Recent work</p>
               <h2>What I&apos;m working on</h2>
             </div>
-            <span className="muted">{workflows.length} items</span>
+            <span className="muted">{workflows.length + recurringPosts.length} items</span>
           </div>
 
           <div className="workflow-list">
@@ -715,6 +750,16 @@ function DashboardShell() {
               </div>
             )}
           </div>
+
+          {recurringPosts.length ? <section className="automatic-work-history" aria-label="Automatic publishing history">
+            <div className="automatic-work-head"><div><p className="eyebrow">Automatic publishing</p><h3>Generated post history</h3><p className="muted">Every post created by an active or stopped recurring series appears here.</p></div><span className="muted">{recurringPosts.length} posts</span></div>
+            <div className="automatic-post-list">
+              {recurringPosts.map((post) => <details className="automatic-post" key={post.id}>
+                <summary><div><strong>{post.subtopic || 'Automatic social post'}</strong><p>{new Date(post.createdAt).toLocaleString()} - {post.draftSource === 'openai' ? 'OpenAI draft' : 'Template fallback'}</p></div><span className={`pill ${post.status === 'published' ? 'ok' : post.status === 'failed' || post.status === 'partial_failed' ? 'danger' : post.status === 'publishing' ? 'running' : 'neutral'}`}>{post.status || 'created'}</span></summary>
+                <div className="automatic-post-body">{Object.entries(post.content || {}).map(([platform, content]) => <div key={platform}><strong>{socialPlatformName(platform)}</strong><pre>{content}</pre></div>)}<p className="automatic-delivery">{deliveryText(post.results)}</p></div>
+              </details>)}
+            </div>
+          </section> : null}
 
           {selectedWorkflow ? <section className="work-progress-card">
             <div><p className="eyebrow">{selectedWorkflow.status === 'completed' ? 'Done 🎉' : selectedWorkflow.status === 'waiting_approval' ? 'Waiting for you' : selectedWorkflow.status === 'draft' ? 'Saved for later' : selectedWorkflow.status === 'deferred' ? 'Decision deferred' : 'Working now'}</p><h3>{selectedWorkflow.goalText}</h3><p className="muted">{selectedWorkflow.status === 'waiting_approval' ? 'I need your approval before I continue.' : selectedWorkflow.status === 'completed' ? 'Everything for this request is ready.' : selectedWorkflow.status === 'draft' ? 'This plan is saved and has not started.' : selectedWorkflow.status === 'deferred' ? 'This decision is saved for later.' : selectedWorkflow.status === 'cancelled' ? 'This request was cancelled.' : 'I’m preparing the next steps.'}</p></div>

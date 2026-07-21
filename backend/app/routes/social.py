@@ -361,7 +361,31 @@ async def create_recurring_campaign(payload: RecurringCampaignRequest, user: dic
 
 @router.get("/recurring")
 def recurring_campaigns(user: dict = Depends(current_user)) -> dict:
-    return {"items": [item for item in store.data.setdefault("recurringCampaigns", []) if item["userId"] == user["id"]]}
+    campaigns = [item for item in store.data.setdefault("recurringCampaigns", []) if item["userId"] == user["id"]]
+    posts = [item for item in store.data.setdefault("socialPosts", []) if item["userId"] == user["id"]]
+    items = []
+    for campaign in campaigns:
+        recent_posts = sorted(
+            (post for post in posts if post.get("recurringCampaignId") == campaign["id"]),
+            key=lambda post: post.get("createdAt", ""),
+            reverse=True,
+        )
+        cursor = campaign.get("cursor", 0)
+        items.append({
+            **campaign,
+            "upcomingAngles": campaign.get("subtopics", [])[cursor:cursor + 5],
+            "recentPosts": [
+                {
+                    key: post.get(key)
+                    for key in (
+                        "id", "subtopic", "content", "platforms", "status", "results",
+                        "draftSource", "createdAt", "updatedAt",
+                    )
+                }
+                for post in recent_posts
+            ],
+        })
+    return {"items": items}
 
 
 @router.post("/recurring/{campaign_id}/stop")

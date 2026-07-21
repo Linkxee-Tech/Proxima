@@ -267,6 +267,34 @@ def test_prepared_artifact_can_be_improved_with_openai(monkeypatch) -> None:
     assert sent["model"] == workflows.settings.proxima_openai_model
 
 
+def test_artifact_improvement_rate_limit_includes_retry_guidance(monkeypatch) -> None:
+    from app.routes import workflows
+
+    auth = headers()
+    workflow = client.post("/api/v1/workflows", json={"goalText": "Prepare a launch plan"}, headers=auth).json()
+    artifact = workflow["artifacts"][0]
+
+    class FakeRateLimitError(Exception):
+        pass
+
+    class StubCompletions:
+        async def create(self, **_kwargs):
+            raise FakeRateLimitError()
+
+    class StubClient:
+        def __init__(self, **_kwargs):
+            self.chat = type("Chat", (), {"completions": StubCompletions()})()
+
+    monkeypatch.setattr(workflows.settings, "openai_api_key", "test-key")
+    monkeypatch.setattr(workflows, "AsyncOpenAI", StubClient)
+    monkeypatch.setattr(workflows, "RateLimitError", FakeRateLimitError)
+    response = client.post(f"/api/v1/workflows/{workflow['id']}/artifacts/{artifact['id']}/improve", headers=auth)
+
+    assert response.status_code == 429
+    assert response.headers["retry-after"] == "60"
+    assert "Wait about one minute" in response.json()["detail"]
+
+
 def test_login_normalizes_email_and_only_failed_attempts_are_rate_limited() -> None:
     email = f"Case-{uuid4()}@Example.COM"
     assert client.post("/api/v1/auth/register", json={"email": email, "password": PASSWORD}).status_code == 201
@@ -342,6 +370,40 @@ def test_social_campaign_persists_then_dispatches_after_approval(monkeypatch) ->
     assert sent["url"] == "https://api.x.com/2/tweets"
 
 
+def test_recurring_campaign_activity_includes_generated_posts() -> None:
+    from app.core.security import access_token_user
+    from app.core.store import store
+
+    auth = headers()
+    user_id = access_token_user(auth["Authorization"].removeprefix("Bearer "))["id"]
+    created = client.post(
+        "/api/v1/social/recurring",
+        json={"topic": "Cyber security", "platforms": ["twitter"], "cadence": "daily"},
+        headers=auth,
+    )
+    assert created.status_code == 201
+    campaign = created.json()
+    with store.lock:
+        store.data.setdefault("socialPosts", []).append({
+            "id": store.id(), "userId": user_id, "recurringCampaignId": campaign["id"],
+            "subtopic": "Practical password habits", "content": {"twitter": "Use a password manager."},
+            "platforms": ["twitter"], "status": "published", "draftSource": "openai",
+            "createdAt": "2026-07-21T12:00:00+00:00",
+            "results": {"twitter": {"status": "published", "providerId": "tweet-123"}},
+        })
+        store.save()
+
+    response = client.get("/api/v1/social/recurring", headers=auth)
+    assert response.status_code == 200
+    item = next(entry for entry in response.json()["items"] if entry["id"] == campaign["id"])
+    assert item["upcomingAngles"]
+    assert item["recentPosts"][0]["subtopic"] == "Practical password habits"
+    assert item["recentPosts"][0]["results"]["twitter"]["providerId"] == "tweet-123"
+    activity = client.get("/api/v1/social/posts", headers=auth)
+    assert activity.status_code == 200
+    assert next(post for post in activity.json()["items"] if post["id"] == item["recentPosts"][0]["id"])["recurringCampaignId"] == campaign["id"]
+
+
 def test_approval_endpoint_advances_its_social_task() -> None:
     auth = headers()
     workflow = client.post("/api/v1/deploy", json={"goalText": "Launch v2 on Twitter"}, headers=auth).json()
@@ -384,6 +446,20 @@ def test_meeting_intent_includes_a_reviewable_invitation_draft() -> None:
     assert created.status_code == 201
     assert created.json()["parsed"]["workProduct"] == product
     assert product["content"] in created.json()["artifacts"][0]["content"]
+
+
+def test_custom_office_task_returns_a_comprehensive_custom_work_brief() -> None:
+    response = client.post(
+        "/api/v1/intent",
+        json={"goalText": "Prepare a project handover for the operations team by Friday."},
+        headers=headers(),
+    )
+    assert response.status_code == 200
+    product = response.json()["workProduct"]
+    assert product["title"] == "Custom work brief"
+    assert product["type"] == "custom"
+    assert "SCOPE AND DELIVERABLES" in product["content"]
+    assert "REVIEW CHECKLIST" in product["content"]
 
 
 def test_artifact_download_and_prometheus_metrics_are_available() -> None:

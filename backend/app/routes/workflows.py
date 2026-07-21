@@ -451,7 +451,11 @@ async def improve_artifact(workflow_id: str, artifact_id: str, user: dict = Depe
             detail=f"The configured OpenAI model ({settings.proxima_openai_model}) is unavailable. Set PROXIMA_OPENAI_MODEL to a model available to this API key.",
         ) from error
     except RateLimitError as error:
-        raise HTTPException(status_code=429, detail="OpenAI is temporarily rate-limiting draft improvements. Please try again shortly.") from error
+        raise HTTPException(
+            status_code=429,
+            detail="OpenAI is temporarily busy. Wait about one minute before improving this draft again.",
+            headers={"Retry-After": "60"},
+        ) from error
     except (APITimeoutError, APIConnectionError) as error:
         raise HTTPException(status_code=503, detail="Proxima could not reach OpenAI. Check the backend connection and try again.") from error
     except APIStatusError as error:

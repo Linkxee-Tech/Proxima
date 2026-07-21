@@ -6,6 +6,7 @@ import Icon from './Icon';
 
 const items = [
   ['/dashboard', 'Home', 'grid'],
+  ['/dashboard#new-request', 'New request', 'zap'],
   ['/dashboard/work', 'My Work', 'workflow'],
   ['/dashboard/drafts', 'Drafts', 'fileText'],
   ['/dashboard/approvals', 'Needs Your Approval', 'shield'],
@@ -20,5 +21,5 @@ const items = [
 
 export default function Sidebar() {
   const pathname = usePathname();
-  return <nav className="sidebar" aria-label="Workspace navigation">{items.map(([href, label, icon]) => <Link key={href} className={pathname === href ? 'active' : ''} href={href}><Icon className="sidebar-icon" name={icon} /><span>{label}</span></Link>)}</nav>;
+  return <nav className="sidebar" aria-label="Workspace navigation">{items.map(([href, label, icon]) => <Link key={href} className={!href.includes('#') && pathname === href ? 'active' : ''} href={href}><Icon className="sidebar-icon" name={icon} /><span>{label}</span></Link>)}</nav>;
 }

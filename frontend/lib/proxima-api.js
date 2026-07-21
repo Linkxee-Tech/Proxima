@@ -32,7 +32,11 @@ export async function apiFetch(path, options = {}, allowRefresh = true) {
   const payload = await readPayload(response);
   if (!response.ok) {
     const message = typeof payload === 'object' && payload ? payload.error || payload.message || payload.detail : payload;
-    throw new Error(message || `Request failed: ${response.status}`);
+    const error = new Error(message || `Request failed: ${response.status}`);
+    error.status = response.status;
+    const retryAfter = Number(response.headers.get('retry-after'));
+    if (Number.isFinite(retryAfter) && retryAfter > 0) error.retryAfterSeconds = retryAfter;
+    throw error;
   }
   return payload;
 }
