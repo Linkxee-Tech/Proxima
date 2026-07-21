@@ -6,6 +6,14 @@ Proxima is a workspace for turning everyday work requests into a clear plan, a u
 
 The project came from a simple frustration: work often gets scattered between notes, inboxes, calendars, and social accounts. A request such as "plan next week's launch" should not end as a vague checklist. It should become something a person can read, adjust, approve, and follow through on.
 
+## Built with Codex and GPT-5.6
+
+I used Codex throughout the build to work through the frontend and backend request paths, improve the approval and campaign flows, trace integration problems, add regression tests, and keep the README and architecture notes aligned with the code.
+
+GPT-5.6 is used by Proxima to prepare first-pass work drafts and channel-specific social copy when `OPENAI_API_KEY` is configured. These responses are drafts, not automatic decisions: a user can edit them, save them, and decide whether an external action should be approved or scheduled.
+
+The project deliberately keeps this boundary visible. Provider actions require a connected account and the right credentials, while approvals and delivery results make it clear what was requested, what was sent, and what a provider accepted or rejected.
+
 ## What you can try
 
 - Give Proxima an open-ended work request. It prepares a structured draft that can be edited before use.

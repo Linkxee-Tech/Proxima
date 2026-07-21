@@ -4,6 +4,10 @@ This note describes the repository as it runs today. It is for contributors who 
 
 ![Proxima architecture diagram](./proxima-architecture.png)
 
+## Frontend diagram
+
+![Proxima frontend architecture diagram](./proxima-frontend-architecture.png)
+
 ```mermaid
 flowchart LR
     browser["Browser"] --> web["Next.js application"]

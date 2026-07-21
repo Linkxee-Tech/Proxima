@@ -16,6 +16,14 @@ Proxima is a work companion for turning a written request into prepared, reviewa
 
 Proxima has a Next.js web application and a FastAPI service. Local development uses a JSON data store. A PostgreSQL-compatible store can be selected for hosted environments.
 
+## Built with Codex and GPT-5.6
+
+I used Codex throughout the build to work through the frontend and backend request paths, improve the approval and campaign flows, trace integration problems, add regression tests, and keep the README and architecture notes aligned with the code.
+
+GPT-5.6 is used by Proxima to prepare first-pass work drafts and channel-specific social copy when `OPENAI_API_KEY` is configured. These responses are drafts, not automatic decisions: a user can edit them, save them, and decide whether an external action should be approved or scheduled.
+
+The project deliberately keeps this boundary visible. Provider actions require a connected account and the right credentials, while approvals and delivery results make it clear what was requested, what was sent, and what a provider accepted or rejected.
+
 ## Social campaigns
 
 The Campaigns workspace creates editable drafts for X, LinkedIn, Facebook Pages, and WhatsApp Business. A saved campaign appears in **Needs Your Approval** and can be published immediately or scheduled. Delivery results are stored per provider so the interface does not report a post as sent when a provider rejected it.
