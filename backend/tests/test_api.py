@@ -296,6 +296,22 @@ def test_intent_preview_uses_human_readable_steps_for_research() -> None:
     ]
 
 
+def test_meeting_intent_includes_a_reviewable_invitation_draft() -> None:
+    auth = headers()
+    goal = "Schedule a meeting with Zhang San next Wednesday."
+    preview = client.post("/api/v1/intent", json={"goalText": goal}, headers=auth)
+    assert preview.status_code == 200
+    product = preview.json()["workProduct"]
+    assert product["title"] == "Meeting plan and invitation draft"
+    assert "Attendee: Zhang San" in product["content"]
+    assert "INVITATION DRAFT" in product["content"]
+
+    created = client.post("/api/v1/workflows", json={"goalText": goal, "preparedWork": product}, headers=auth)
+    assert created.status_code == 201
+    assert created.json()["parsed"]["workProduct"] == product
+    assert product["content"] in created.json()["artifacts"][0]["content"]
+
+
 def test_artifact_download_and_prometheus_metrics_are_available() -> None:
     auth = headers()
     workflow = client.post("/api/v1/workflows", json={"goalText": "Create a launch brief"}, headers=auth).json()

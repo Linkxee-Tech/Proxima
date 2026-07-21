@@ -21,8 +21,17 @@ class PasswordResetConfirm(BaseModel):
     password: str = Field(min_length=6, max_length=8)
 
 
+class PreparedWorkRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=180)
+    type: str = Field(default="general", max_length=50)
+    content: str = Field(min_length=1, max_length=12000)
+
+
 class GoalRequest(BaseModel):
     goalText: str = Field(min_length=1, max_length=20000)
+    # The reviewed draft is sent back when a user starts or saves the plan, so the
+    # workflow keeps the same content they saw in the preview.
+    preparedWork: PreparedWorkRequest | None = None
 
 
 class MemoryRequest(BaseModel):

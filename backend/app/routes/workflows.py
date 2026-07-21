@@ -128,6 +128,18 @@ async def goal_intent(goal: str) -> dict:
         "entities": entities,
         "requiresApproval": review_required,
         "tasks": suggested_tasks(goal, social),
+        "workProduct": parsed.get("workProduct"),
+    }
+
+
+def reviewed_intent(intent: dict, payload: GoalRequest) -> dict:
+    """Keep the exact prepared draft the user reviewed before starting work."""
+    if not payload.preparedWork:
+        return intent
+    work = payload.preparedWork
+    return {
+        **intent,
+        "workProduct": {"title": work.title, "type": work.type, "content": work.content},
     }
 
 
@@ -141,12 +153,13 @@ async def slack_update(workflow: dict, message: str) -> None:
 
 
 def plan_artifact(goal: str, intent: dict) -> dict:
+    work_product = intent.get("workProduct") or {}
     lines = [
         f"Goal: {goal}",
-        "",
-        "Prepared steps:",
-        *[f"- {task['title']}" for task in intent["tasks"]],
     ]
+    if work_product.get("content"):
+        lines.extend(["", work_product.get("title") or "Prepared work", "", work_product["content"]])
+    lines.extend(["", "Prepared steps:", *[f"- {task['title']}" for task in intent["tasks"]]])
     if intent["requiresApproval"]:
         lines.extend(["", "No outside account has been changed. Review is required before this work can continue."])
         title = "Prepared work for review"
@@ -308,7 +321,7 @@ def approve_gate(workflow: dict, gate_id: str) -> dict:
 
 @router.post("/workflows", status_code=201)
 async def create(payload: GoalRequest, user: dict = Depends(current_user)) -> dict:
-    intent = await goal_intent(payload.goalText)
+    intent = reviewed_intent(await goal_intent(payload.goalText), payload)
     workflow = workflow_for(payload.goalText, user["id"], intent)
     with store.lock:
         store.data["workflows"].insert(0, workflow)
@@ -320,7 +333,7 @@ async def create(payload: GoalRequest, user: dict = Depends(current_user)) -> di
 
 @router.post("/workflows/drafts", status_code=201)
 async def save_draft(payload: GoalRequest, user: dict = Depends(current_user)) -> dict:
-    intent = await goal_intent(payload.goalText)
+    intent = reviewed_intent(await goal_intent(payload.goalText), payload)
     draft = {
         "id": store.id(),
         "userId": user["id"],

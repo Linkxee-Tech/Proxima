@@ -99,6 +99,23 @@ function GoalUnderstanding({ intent, goal, tasks = [], approvalNeeded = false, d
   );
 }
 
+function WorkProductPreview({ workProduct }) {
+  if (!workProduct?.content) return null;
+  return (
+    <section className="prepared-work" aria-label="Prepared work preview">
+      <div className="prepared-work-head">
+        <div>
+          <p className="preview-label">Prepared for your review</p>
+          <h3>{workProduct.title || 'Draft'}</h3>
+        </div>
+        <span>{titleCase(workProduct.type || 'draft')}</span>
+      </div>
+      <p className="prepared-work-note">Review and edit the request if any details need to change. Nothing has been sent or scheduled.</p>
+      <pre>{workProduct.content}</pre>
+    </section>
+  );
+}
+
 function DashboardShell() {
   const { pushToast } = useToast();
   const router = useRouter();
@@ -299,7 +316,7 @@ function DashboardShell() {
     try {
       const workflow = await apiFetch('/api/workflows', {
         method: 'POST',
-        body: JSON.stringify({ goalText }),
+        body: JSON.stringify({ goalText, preparedWork: lastIntent?.workProduct }),
       });
       setWorkflows((current) => [workflow, ...current.filter((item) => item.id !== workflow.id)]);
       setSelectedId(workflow.id);
@@ -320,7 +337,7 @@ function DashboardShell() {
     try {
       const draft = await apiFetch('/api/workflows/drafts', {
         method: 'POST',
-        body: JSON.stringify({ goalText }),
+        body: JSON.stringify({ goalText, preparedWork: lastIntent?.workProduct }),
       });
       setWorkflows((current) => [draft, ...current.filter((item) => item.id !== draft.id)]);
       setSelectedId(draft.id);
@@ -575,7 +592,7 @@ function DashboardShell() {
             <button
               type="button"
               className="chip"
-              onClick={() => sample('Draft a launch brief for the marketing team.')}
+              onClick={() => sample('Write a proposal for a customer onboarding improvement project.')}
             >
               Write a proposal
             </button>
@@ -584,9 +601,11 @@ function DashboardShell() {
             </button>
           </div>
 
+          <p className="samples-hint">Or describe any other office task above — for example, prepare a client update, organise a project handover, or create a status report.</p>
+
           <div className={`preview-card ${planReady ? 'plan-ready' : ''}`}>
             <div className="preview-head"><p className="preview-label">{planReady ? 'Goal received' : 'Here’s the plan'}</p></div>
-            {planReady ? <><p className="plan-ready-title">I’ve prepared the next steps.</p><GoalUnderstanding intent={lastIntent} goal={inputValue} /><div className="action-row plan-actions"><button type="button" className="primary" onClick={createWorkflow}>Start this work</button><button type="button" className="secondary" onClick={saveDraft}>Save as draft</button><button type="button" className="ghost" onClick={() => setPlanReady(false)}>Edit plan</button></div></> : <GoalUnderstanding intent={lastIntent} goal={inputValue} />}
+            {planReady ? <><p className="plan-ready-title">I’ve prepared the next steps and a working draft.</p><GoalUnderstanding intent={lastIntent} goal={inputValue} /><WorkProductPreview workProduct={lastIntent?.workProduct} /><div className="action-row plan-actions"><button type="button" className="primary" onClick={createWorkflow}>Start this work</button><button type="button" className="secondary" onClick={saveDraft}>Save as draft</button><button type="button" className="ghost" onClick={() => setPlanReady(false)}>Edit plan</button></div></> : <GoalUnderstanding intent={lastIntent} goal={inputValue} />}
           </div>
         </aside>
 
