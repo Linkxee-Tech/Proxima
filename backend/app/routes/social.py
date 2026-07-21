@@ -1,7 +1,7 @@
 import asyncio
 import base64
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -13,7 +13,7 @@ from ..core.config import settings
 from ..core.crypto import decrypt
 from ..core.security import current_user
 from ..core.store import store
-from ..schemas import SocialDraftRequest, SocialPublishRequest
+from ..schemas import RecurringCampaignRequest, SocialDraftRequest, SocialPublishRequest
 
 router = APIRouter(prefix="/social", tags=["social"])
 PLATFORMS = {"twitter": 280, "linkedin": 3000, "facebook": 63206, "whatsapp": 4096}
@@ -80,6 +80,24 @@ async def generate_drafts(goal: str, platforms: list[str]) -> tuple[dict, str]:
         return prepared, "openai"
     except Exception:
         return fallback_drafts(goal, platforms), "template"
+
+
+async def generate_series(topic: str) -> list[str]:
+    fallback = [f"What {topic} means", f"Common {topic} risks", f"Practical {topic} habits", f"A {topic} checklist", f"Measuring {topic} progress", f"Next steps for {topic}"]
+    if not settings.openai_api_key:
+        return fallback
+    try:
+        client = AsyncOpenAI(api_key=settings.openai_api_key)
+        response = await client.chat.completions.create(
+            model=settings.proxima_social_text_model,
+            response_format={"type": "json_object"},
+            messages=[{"role": "user", "content": f"Return strict JSON {{\"subtopics\":[...]}}. Break the topic '{topic}' into 12 distinct, practical social-post angles. Do not make up facts."}],
+        )
+        values = json.loads(response.choices[0].message.content or "{}").get("subtopics", [])
+        prepared = [str(value).strip() for value in values if str(value).strip()]
+        return prepared[:12] if len(prepared) >= 3 else fallback
+    except Exception:
+        return fallback
 
 
 async def generate_image(prompt: str, user_id: str) -> dict:
@@ -321,6 +339,42 @@ async def approve(post_id: str, user: dict = Depends(current_user)) -> dict:
     return await deliver(post)
 
 
+@router.post("/recurring", status_code=201)
+async def create_recurring_campaign(payload: RecurringCampaignRequest, user: dict = Depends(current_user)) -> dict:
+    platforms = list(dict.fromkeys(payload.platforms))
+    if any(platform not in PLATFORMS for platform in platforms):
+        raise HTTPException(status_code=422, detail="Select supported social platforms.")
+    if "whatsapp" in platforms and not payload.whatsapp_recipient:
+        raise HTTPException(status_code=422, detail="Add an opted-in WhatsApp recipient for recurring WhatsApp messages.")
+    next_run = parse_schedule(payload.scheduled_for, payload.schedule_timezone) if payload.scheduled_for else now()
+    campaign = {
+        "id": store.id(), "userId": user["id"], "topic": payload.topic.strip(), "platforms": platforms,
+        "accountIds": {platform: payload.account_ids[platform] for platform in platforms if payload.account_ids.get(platform)},
+        "whatsappRecipient": payload.whatsapp_recipient, "cadence": payload.cadence, "subtopics": await generate_series(payload.topic),
+        "cursor": 0, "nextRun": next_run, "status": "active", "runs": 0, "createdAt": now(),
+    }
+    with store.lock:
+        store.data.setdefault("recurringCampaigns", []).append(campaign)
+        store.save()
+    return campaign
+
+
+@router.get("/recurring")
+def recurring_campaigns(user: dict = Depends(current_user)) -> dict:
+    return {"items": [item for item in store.data.setdefault("recurringCampaigns", []) if item["userId"] == user["id"]]}
+
+
+@router.post("/recurring/{campaign_id}/stop")
+def stop_recurring_campaign(campaign_id: str, user: dict = Depends(current_user)) -> dict:
+    campaign = next((item for item in store.data.setdefault("recurringCampaigns", []) if item["id"] == campaign_id and item["userId"] == user["id"]), None)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Recurring campaign not found.")
+    campaign["status"] = "stopped"
+    campaign["stoppedAt"] = now()
+    store.save()
+    return campaign
+
+
 @router.get("/posts")
 def posts(user: dict = Depends(current_user)) -> dict:
     items = [post for post in store.data.setdefault("socialPosts", []) if post["userId"] == user["id"]]
@@ -402,9 +456,53 @@ async def dispatch_due_posts() -> None:
         await deliver(post)
 
 
+async def dispatch_recurring_campaigns() -> None:
+    due: list[dict] = []
+    current = datetime.now(timezone.utc)
+    with store.lock:
+        for campaign in store.data.setdefault("recurringCampaigns", []):
+            if campaign.get("status") != "active":
+                continue
+            try:
+                next_run = datetime.fromisoformat(campaign["nextRun"].replace("Z", "+00:00"))
+            except (KeyError, ValueError):
+                campaign["status"] = "stopped"
+                continue
+            if next_run <= current:
+                campaign["status"] = "running"
+                due.append(campaign)
+        if due:
+            store.save()
+    for campaign in due:
+        if campaign["cursor"] >= len(campaign.get("subtopics", [])):
+            campaign["subtopics"] = await generate_series(campaign["topic"])
+            campaign["cursor"] = 0
+        angle = campaign["subtopics"][campaign["cursor"]]
+        drafts, source = await generate_drafts(f"Topic: {campaign['topic']}\nAngle for this instalment: {angle}", campaign["platforms"])
+        post = {
+            "id": store.id(), "userId": campaign["userId"], "content": drafts, "platforms": campaign["platforms"],
+            "accountIds": campaign.get("accountIds", {}), "whatsappRecipient": campaign.get("whatsappRecipient"),
+            "status": "publishing", "results": {}, "recurringCampaignId": campaign["id"], "subtopic": angle,
+            "draftSource": source, "createdAt": now(),
+        }
+        with store.lock:
+            store.data.setdefault("socialPosts", []).append(post)
+            store.save()
+        await deliver(post)
+        interval = 7 if campaign["cadence"] == "weekly" else 1
+        campaign["cursor"] += 1
+        campaign["runs"] = campaign.get("runs", 0) + 1
+        campaign["lastRun"] = now()
+        campaign["nextRun"] = (datetime.now(timezone.utc) + timedelta(days=interval)).isoformat()
+        campaign["status"] = "active"
+        with store.lock:
+            store.save()
+
+
 async def scheduler_loop() -> None:
     while True:
         try:
+            await dispatch_recurring_campaigns()
             await dispatch_due_posts()
         except Exception:
             # Individual provider failures are captured on the post. Keep the scheduler alive for later work.

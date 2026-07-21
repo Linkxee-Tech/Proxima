@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -65,3 +66,13 @@ class SocialPublishRequest(BaseModel):
     whatsapp_recipient: str | None = Field(default=None, max_length=32)
     account_ids: dict[str, str] = Field(default_factory=dict)
     approved: bool = False
+
+
+class RecurringCampaignRequest(BaseModel):
+    topic: str = Field(min_length=3, max_length=12000)
+    platforms: list[str] = Field(min_length=1, max_length=4)
+    cadence: Literal["daily", "weekly"] = "daily"
+    scheduled_for: datetime | None = None
+    schedule_timezone: str = Field(default="UTC", max_length=100)
+    account_ids: dict[str, str] = Field(default_factory=dict)
+    whatsapp_recipient: str | None = Field(default=None, max_length=32)
