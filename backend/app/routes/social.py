@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -18,6 +19,7 @@ from ..schemas import RecurringCampaignRequest, SocialDraftRequest, SocialPublis
 router = APIRouter(prefix="/social", tags=["social"])
 PLATFORMS = {"twitter": 280, "linkedin": 3000, "facebook": 63206, "whatsapp": 4096}
 ALLOWED_TYPES = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}
+logger = logging.getLogger(__name__)
 
 
 class PublishError(Exception):
@@ -232,6 +234,9 @@ async def deliver(post: dict) -> dict:
             results[platform] = {"status": "failed", "error": str(error), "publishedAt": now()}
         except httpx.HTTPError:
             results[platform] = {"status": "failed", "error": f"{platform.title()} could not be reached. Try again shortly.", "publishedAt": now()}
+        except Exception:
+            logger.exception("Unexpected %s publishing failure for post %s", platform, post.get("id"))
+            results[platform] = {"status": "failed", "error": f"{platform.title()} could not be delivered. Review the connection and try again.", "publishedAt": now()}
     succeeded = [item for item in results.values() if item["status"] == "published"]
     post["results"] = results
     post["status"] = "published" if len(succeeded) == len(results) else "partial_failed" if succeeded else "failed"
@@ -529,6 +534,7 @@ async def scheduler_loop() -> None:
             await dispatch_recurring_campaigns()
             await dispatch_due_posts()
         except Exception:
-            # Individual provider failures are captured on the post. Keep the scheduler alive for later work.
-            pass
+            # Individual provider failures are captured on the post. Record any scheduler fault too,
+            # so an unexpected issue is visible in host logs instead of silently disappearing.
+            logger.exception("Social scheduler cycle failed")
         await asyncio.sleep(settings.proxima_social_scheduler_interval_seconds)

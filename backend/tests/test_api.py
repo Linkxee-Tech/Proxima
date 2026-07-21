@@ -1,3 +1,4 @@
+import asyncio
 import os
 import atexit
 import shutil
@@ -368,6 +369,19 @@ def test_social_campaign_persists_then_dispatches_after_approval(monkeypatch) ->
     assert published.json()["status"] == "published"
     assert published.json()["results"]["twitter"]["providerId"] == "tweet-123"
     assert sent["url"] == "https://api.x.com/2/tweets"
+
+
+def test_social_delivery_records_an_unexpected_provider_failure(monkeypatch) -> None:
+    from app.routes import social
+
+    async def broken_publish(*_args, **_kwargs):
+        raise RuntimeError("provider client bug")
+
+    monkeypatch.setattr(social, "publish_platform", broken_publish)
+    post = {"id": "post-unexpected", "platforms": ["twitter"], "results": {}}
+    delivered = asyncio.run(social.deliver(post))
+    assert delivered["status"] == "failed"
+    assert delivered["results"]["twitter"]["error"] == "Twitter could not be delivered. Review the connection and try again."
 
 
 def test_recurring_campaign_activity_includes_generated_posts() -> None:
