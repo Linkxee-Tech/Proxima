@@ -29,8 +29,37 @@ class SlackMessagePayload(BaseModel):
     channel: str = Field(min_length=2, max_length=80)
     text: str = Field(min_length=1, max_length=40000)
 
+
+class SlackNotificationChannelPayload(BaseModel):
+    channel: str = Field(min_length=2, max_length=80)
+
 def connections(user_id: str) -> list[dict]:
     return [item for item in store.data.setdefault("connections", []) if item["userId"] == user_id]
+
+
+async def send_workflow_update(user_id: str, text: str) -> bool:
+    """Post an opted-in workflow update without letting Slack failures stop the work."""
+    connection = next((item for item in connections(user_id) if item["tool"] == "slack"), None)
+    channel = connection.get("notificationChannel") if connection else None
+    if not connection or not channel:
+        return False
+    try:
+        token = decrypt(connection["accessToken"])
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.post(
+                "https://slack.com/api/chat.postMessage",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"channel": channel, "text": text},
+            )
+        result = response.json()
+        status = "sent" if response.is_success and result.get("ok") else "failed"
+    except (httpx.HTTPError, ValueError):
+        result = {}
+        status = "failed"
+    with store.lock:
+        store.data["audit"].append({"id": store.id(), "userId": user_id, "tool": "slack", "action": "workflow_update", "at": time.time(), "status": status, "channel": channel, "messageTs": result.get("ts")})
+        store.save()
+    return status == "sent"
 
 @router.get("")
 def list_tools(user: dict = Depends(current_user)) -> dict:
@@ -85,6 +114,17 @@ def disconnect(tool_name: str, user: dict = Depends(current_user)) -> dict:
     with store.lock:
         before = len(store.data.setdefault("connections", [])); store.data["connections"][:] = [item for item in store.data["connections"] if not (item["userId"] == user["id"] and item["tool"] == tool_name)]; store.save()
     return {"ok": True, "disconnected": before != len(store.data["connections"])}
+
+
+@router.post("/slack/notification-channel")
+def set_slack_notification_channel(payload: SlackNotificationChannelPayload, user: dict = Depends(current_user)) -> dict:
+    connection = next((item for item in connections(user["id"]) if item["tool"] == "slack"), None)
+    if not connection:
+        raise HTTPException(status_code=409, detail="Connect Slack before saving a workflow updates channel.")
+    connection["notificationChannel"] = payload.channel.strip()
+    with store.lock:
+        store.save()
+    return {"ok": True, "channel": connection["notificationChannel"]}
 
 
 @router.post("/slack/messages", status_code=201)

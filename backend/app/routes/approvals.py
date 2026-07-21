@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from ..core.realtime import realtime
 from ..core.security import current_user
 from ..core.store import store
-from .workflows import approve_gate, audit, owned
+from .workflows import approve_gate, audit, owned, slack_update
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
 
@@ -65,6 +65,7 @@ async def approve(approval_id: str, user: dict = Depends(current_user)) -> dict:
     workflow, gate = parse(approval_id, user["id"])
     approve_gate(workflow, gate["id"])
     workflow["auditTrail"].insert(0, audit(f"Approved: {gate['title']}."))
+    await slack_update(workflow, f"Proxima: Approved “{workflow['goalText']}”.")
     await notify(workflow)
     return workflow
 
@@ -78,6 +79,7 @@ async def reject(approval_id: str, user: dict = Depends(current_user)) -> dict:
     workflow["status"] = "cancelled"
     workflow["updatedAt"] = datetime.now(timezone.utc).isoformat()
     workflow["auditTrail"].insert(0, audit(f"Rejected: {gate['title']}.", "warning"))
+    await slack_update(workflow, f"Proxima: Cancelled “{workflow['goalText']}” after review.")
     await notify(workflow)
     return workflow
 
@@ -92,6 +94,7 @@ async def defer(approval_id: str, user: dict = Depends(current_user)) -> dict:
     workflow["status"] = "deferred"
     workflow["updatedAt"] = gate["deferredAt"]
     workflow["auditTrail"].insert(0, audit(f"Decision deferred: {gate['title']}."))
+    await slack_update(workflow, f"Proxima: Saved “{workflow['goalText']}” for later review.")
     await notify(workflow)
     return {"id": approval_id, "status": "deferred", "workflow": workflow["id"]}
 
@@ -106,6 +109,7 @@ async def resume(approval_id: str, user: dict = Depends(current_user)) -> dict:
     workflow["status"] = "waiting_approval"
     workflow["updatedAt"] = datetime.now(timezone.utc).isoformat()
     workflow["auditTrail"].insert(0, audit(f"Decision reopened: {gate['title']}."))
+    await slack_update(workflow, f"Proxima: Reopened “{workflow['goalText']}” for review.")
     await notify(workflow)
     return workflow
 

@@ -180,6 +180,36 @@ def test_connected_slack_can_send_a_user_authored_message(monkeypatch) -> None:
     assert sent["json"] == {"channel": "C0123456789", "text": "Hello from Proxima"}
 
 
+def test_saved_slack_channel_receives_workflow_updates(monkeypatch) -> None:
+    from app.core.crypto import encrypt
+    from app.core.security import access_token_user
+    from app.core.store import store
+    from app.routes import tools
+
+    auth = headers()
+    user_id = access_token_user(auth["Authorization"].removeprefix("Bearer "))["id"]
+    with store.lock:
+        store.data["connections"].append({"id": store.id(), "userId": user_id, "tool": "slack", "accessToken": encrypt("xoxb-test"), "notificationChannel": "C0123456789", "connectedAt": 0})
+        store.save()
+
+    sent: dict[str, object] = {}
+    class StubResponse:
+        is_success = True
+        def json(self): return {"ok": True, "channel": "C0123456789", "ts": "123.456"}
+    class StubClient:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *_args): return None
+        async def post(self, url, headers, json):
+            sent.update(url=url, headers=headers, json=json)
+            return StubResponse()
+    monkeypatch.setattr(tools.httpx, "AsyncClient", lambda **_kwargs: StubClient())
+
+    response = client.post("/api/v1/workflows", json={"goalText": "Create a launch brief"}, headers=auth)
+    assert response.status_code == 201
+    assert sent["json"]["channel"] == "C0123456789"
+    assert "Started work" in sent["json"]["text"]
+
+
 def test_refresh_tokens_cannot_authorize_api_or_websocket_requests() -> None:
     response = client.post(
         "/api/v1/auth/register",

@@ -7,6 +7,7 @@ from ..core.security import current_user
 from ..core.store import store
 from ..kernel.intent import parse_goal
 from ..schemas import ApprovalRequest, GoalRequest
+from .tools import send_workflow_update
 
 router = APIRouter(tags=["workflows"])
 SOCIAL = ["twitter", "linkedin", "facebook", "whatsapp"]
@@ -132,6 +133,11 @@ async def goal_intent(goal: str) -> dict:
 
 def audit(message: str, level: str = "info") -> dict:
     return {"id": store.id(), "at": now(), "level": level, "message": message}
+
+
+async def slack_update(workflow: dict, message: str) -> None:
+    if await send_workflow_update(workflow["userId"], message):
+        workflow["auditTrail"].insert(0, audit("Sent a workflow update to Slack."))
 
 
 def plan_artifact(goal: str, intent: dict) -> dict:
@@ -307,6 +313,7 @@ async def create(payload: GoalRequest, user: dict = Depends(current_user)) -> di
     with store.lock:
         store.data["workflows"].insert(0, workflow)
         store.save()
+    await slack_update(workflow, f"Proxima: Started work on “{payload.goalText}”. " + ("It is ready for your review." if workflow["status"] == "waiting_approval" else "The prepared plan is ready."))
     await realtime.workflow_updated(workflow)
     return workflow
 
@@ -350,6 +357,7 @@ async def start_draft(workflow_id: str, user: dict = Depends(current_user)) -> d
         index = store.data["workflows"].index(draft)
         store.data["workflows"][index] = workflow
         store.save()
+    await slack_update(workflow, f"Proxima: Started saved work “{workflow['goalText']}”.")
     await realtime.workflow_updated(workflow)
     return workflow
 
@@ -386,6 +394,7 @@ async def approve(workflow_id: str, payload: ApprovalRequest, user: dict = Depen
     workflow["auditTrail"].insert(0, audit(message))
     with store.lock:
         store.save()
+    await slack_update(workflow, f"Proxima: {message}")
     await realtime.workflow_updated(workflow)
     return workflow
 
@@ -406,6 +415,7 @@ async def cancel(workflow_id: str, user: dict = Depends(current_user)) -> dict:
     workflow["auditTrail"].insert(0, audit("Workflow cancelled.", "warning"))
     with store.lock:
         store.save()
+    await slack_update(workflow, f"Proxima: Cancelled work “{workflow['goalText']}”.")
     await realtime.workflow_updated(workflow)
     return workflow
 
