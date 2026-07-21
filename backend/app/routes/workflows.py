@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response
-from openai import AsyncOpenAI
+from openai import APIConnectionError, APIStatusError, APITimeoutError, AsyncOpenAI, AuthenticationError, NotFoundError, RateLimitError
 
 from ..core.config import settings
 from ..core.realtime import realtime
@@ -443,8 +443,21 @@ async def improve_artifact(workflow_id: str, artifact_id: str, user: dict = Depe
             messages=[{"role": "system", "content": "You write accurate, useful office deliverables."}, {"role": "user", "content": prompt}],
         )
         content = (response.choices[0].message.content or "").strip()
+    except AuthenticationError as error:
+        raise HTTPException(status_code=503, detail="OpenAI rejected the configured API key. Update OPENAI_API_KEY and try again.") from error
+    except NotFoundError as error:
+        raise HTTPException(
+            status_code=503,
+            detail=f"The configured OpenAI model ({settings.proxima_openai_model}) is unavailable. Set PROXIMA_OPENAI_MODEL to a model available to this API key.",
+        ) from error
+    except RateLimitError as error:
+        raise HTTPException(status_code=429, detail="OpenAI is temporarily rate-limiting draft improvements. Please try again shortly.") from error
+    except (APITimeoutError, APIConnectionError) as error:
+        raise HTTPException(status_code=503, detail="Proxima could not reach OpenAI. Check the backend connection and try again.") from error
+    except APIStatusError as error:
+        raise HTTPException(status_code=502, detail="OpenAI could not improve this draft right now. Please try again shortly.") from error
     except Exception as error:
-        raise HTTPException(status_code=502, detail="OpenAI could not improve this draft. Try again shortly.") from error
+        raise HTTPException(status_code=502, detail="OpenAI returned an unexpected response while improving this draft.") from error
     if not content:
         raise HTTPException(status_code=502, detail="OpenAI returned an empty draft. Try again shortly.")
     return save_artifact_content(workflow, item, content[:20000])

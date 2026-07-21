@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Literal
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -25,7 +26,12 @@ class Settings(BaseSettings):
     proxima_smtp_use_ssl: bool = False
     proxima_cors_origins: str = "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:3001"
     openai_api_key: str = ""
-    proxima_openai_model: str = "gpt-5.6"
+    # Accept the model variable used by the original Build Week environment as
+    # a compatibility alias. PROXIMA_OPENAI_MODEL remains the documented name.
+    proxima_openai_model: str = Field(
+        default="gpt-5.6",
+        validation_alias=AliasChoices("PROXIMA_OPENAI_MODEL", "OPENAI_GPT5_TERRA_MODEL"),
+    )
     proxima_social_text_model: str = "gpt-5.6-terra"
     proxima_image_model: str = "gpt-image-2"
     proxima_upload_max_bytes: int = 10 * 1024 * 1024

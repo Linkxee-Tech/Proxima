@@ -233,6 +233,40 @@ def test_new_passwords_must_be_between_six_and_eight_characters() -> None:
     assert long.status_code == 422
 
 
+def test_prepared_artifact_can_be_improved_with_openai(monkeypatch) -> None:
+    from app.routes import workflows
+
+    auth = headers()
+    created = client.post("/api/v1/workflows", json={"goalText": "Prepare a launch plan for Proxima"}, headers=auth)
+    assert created.status_code == 201
+    workflow = created.json()
+    artifact = workflow["artifacts"][0]
+
+    sent: dict[str, object] = {}
+
+    class StubCompletions:
+        async def create(self, **kwargs):
+            sent.update(kwargs)
+            message = type("Message", (), {"content": "# Launch plan\n\n## Objective\nPrepare and review the launch steps."})()
+            return type("Response", (), {"choices": [type("Choice", (), {"message": message})()]})()
+
+    class StubClient:
+        def __init__(self, **_kwargs):
+            self.chat = type("Chat", (), {"completions": StubCompletions()})()
+
+    monkeypatch.setattr(workflows.settings, "openai_api_key", "test-key")
+    monkeypatch.setattr(workflows, "AsyncOpenAI", StubClient)
+    response = client.post(
+        f"/api/v1/workflows/{workflow['id']}/artifacts/{artifact['id']}/improve",
+        headers=auth,
+    )
+
+    assert response.status_code == 200
+    updated = response.json()
+    assert updated["artifacts"][0]["content"].startswith("# Launch plan")
+    assert sent["model"] == workflows.settings.proxima_openai_model
+
+
 def test_login_normalizes_email_and_only_failed_attempts_are_rate_limited() -> None:
     email = f"Case-{uuid4()}@Example.COM"
     assert client.post("/api/v1/auth/register", json={"email": email, "password": PASSWORD}).status_code == 201
