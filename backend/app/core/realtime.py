@@ -31,5 +31,18 @@ class RealtimeHub:
         for websocket in stale:
             self.disconnect(user_id, websocket)
 
+    async def social_post_updated(self, post: dict) -> None:
+        user_id = post.get("userId")
+        if not user_id:
+            return
+        stale: list[WebSocket] = []
+        for websocket in tuple(self._connections.get(user_id, ())):
+            try:
+                await websocket.send_json({"type": "post.updated", "post": post})
+            except Exception:
+                stale.append(websocket)
+        for websocket in stale:
+            self.disconnect(user_id, websocket)
+
 
 realtime = RealtimeHub()

@@ -14,6 +14,7 @@ from ..core.config import settings
 from ..core.crypto import decrypt
 from ..core.security import current_user
 from ..core.store import store
+from ..core.realtime import realtime
 from ..schemas import RecurringCampaignRequest, SocialDraftRequest, SocialPublishRequest
 
 router = APIRouter(prefix="/social", tags=["social"])
@@ -122,11 +123,51 @@ async def generate_image(prompt: str, user_id: str) -> dict:
     return image_record(user_id, filename, "image/png", len(payload), "ai_generated")
 
 
-def connection_token(user_id: str, platform: str, account_id: str | None = None) -> str:
+async def get_valid_token(user_id: str, platform: str, account_id: str | None = None) -> str:
+    import time
+    from ..tools.registry import definition, credential
     connection = next((item for item in store.data.setdefault("connections", []) if item["userId"] == user_id and item["tool"] == platform and (not account_id or item["id"] == account_id)), None)
     if not connection:
         label = "Twitter / X" if platform == "twitter" else platform.title()
         raise PublishError(f"Connect {label} in Integrations before publishing.")
+        
+    expires_at = connection.get("expiresAt")
+    if expires_at and time.time() > expires_at - 60:
+        refresh_token_enc = connection.get("refreshToken")
+        if not refresh_token_enc:
+            raise PublishError(f"Reconnect {platform.title()}; no refresh token available.")
+        try:
+            refresh_token = decrypt(refresh_token_enc)
+        except Exception as e:
+            raise PublishError(f"Reconnect {platform.title()}; its saved refresh token is unavailable.") from e
+            
+        tool = definition(platform)
+        body = {"grant_type": "refresh_token", "refresh_token": refresh_token}
+        headers = {"Accept": "application/json"}
+        if tool.pkce:
+            body["client_id"] = credential(tool.client_id_env)
+        elif platform == "notion":
+            headers["Authorization"] = "Basic " + base64.b64encode(f"{credential(tool.client_id_env)}:{credential(tool.client_secret_env)}".encode()).decode()
+        else:
+            body["client_id"] = credential(tool.client_id_env)
+            body["client_secret"] = credential(tool.client_secret_env)
+            
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                response = await client.post(tool.token_url, data=body, headers=headers)
+                response.raise_for_status()
+                token = response.json()
+            expires_in = token.get("expires_in")
+            connection["accessToken"] = encrypt(token["access_token"])
+            if token.get("refresh_token"):
+                connection["refreshToken"] = encrypt(token["refresh_token"])
+            connection["expiresAt"] = time.time() + float(expires_in) if expires_in else None
+            with store.lock:
+                store.save()
+        except Exception as error:
+            logger.warning("Token refresh failed for %s: %s", platform, error)
+            raise PublishError(f"Reconnect {platform.title()}; its access token expired and could not be refreshed.") from error
+
     try:
         return decrypt(connection["accessToken"])
     except (KeyError, ValueError) as error:
@@ -213,11 +254,11 @@ async def publish_platform(post: dict, platform: str) -> dict:
     text = post["content"][platform]
     account_id = (post.get("accountIds") or {}).get(platform)
     if platform == "twitter":
-        result = await publish_twitter(connection_token(post["userId"], platform, account_id), text)
+        result = await publish_twitter(await get_valid_token(post["userId"], platform, account_id), text)
     elif platform == "linkedin":
-        result = await publish_linkedin(connection_token(post["userId"], platform, account_id), text)
+        result = await publish_linkedin(await get_valid_token(post["userId"], platform, account_id), text)
     elif platform == "facebook":
-        result = await publish_facebook(connection_token(post["userId"], platform, account_id), text)
+        result = await publish_facebook(await get_valid_token(post["userId"], platform, account_id), text)
     else:
         result = await publish_whatsapp(text, post.get("whatsappRecipient"))
     if post.get("imageId") or post.get("imageUrl"):
@@ -245,7 +286,7 @@ async def deliver(post: dict) -> dict:
                 last_error = f"{platform.title()} could not be reached. {str(error)[:200]}"
                 logger.warning("Publish attempt %d/%d HTTP error for post %s platform %s: %s", attempt, max_retries, post.get("id"), platform, last_error)
             except Exception as error:
-                last_error = f"Unexpected error: {str(error)[:200]}"
+                last_error = f"{platform.title() if platform != 'twitter' else 'Twitter'} could not be delivered. Review the connection and try again."
                 logger.exception("Unexpected publishing failure for post %s platform %s on attempt %d", post.get("id"), platform, attempt)
             # If we've exhausted retries, record failure; otherwise back off and retry
             if attempt > max_retries:
@@ -260,6 +301,7 @@ async def deliver(post: dict) -> dict:
     post["updatedAt"] = now()
     with store.lock:
         store.save()
+    await realtime.social_post_updated(post)
     return post
 
 
