@@ -29,6 +29,7 @@ export default function RecurringCampaigns() {
   const [platforms, setPlatforms] = useState(['twitter']);
   const [cadence, setCadence] = useState('daily');
   const [scheduledFor, setScheduledFor] = useState('');
+  const [scheduleTimezone, setScheduleTimezone] = useState('');
   const [whatsappRecipient, setWhatsappRecipient] = useState('');
   const [accountIds, setAccountIds] = useState({});
   const [items, setItems] = useState([]);
@@ -67,6 +68,39 @@ export default function RecurringCampaigns() {
     setBusy(true);
     setMessage('');
     try {
+      const parseDateInput = (value) => {
+        if (!value) return null;
+        // If the value already looks like a datetime-local value (YYYY-MM-DDTHH:MM), use it
+        if (value.includes('T')) return value;
+        // Try to parse common US format: MM/DD/YYYY HH:MM AM/PM
+        const m = value.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\s+(\d{1,2}):(\d{2})\s*([APap][Mm])$/);
+        if (m) {
+          const month = Number(m[1]) - 1;
+          const day = Number(m[2]);
+          const year = Number(m[3]);
+          let hour = Number(m[4]);
+          const minute = Number(m[5]);
+          const ampm = m[6].toLowerCase();
+          if (ampm === 'pm' && hour !== 12) hour += 12;
+          if (ampm === 'am' && hour === 12) hour = 0;
+          const d = new Date(year, month, day, hour, minute, 0, 0);
+          if (!Number.isNaN(d.getTime())) return d.toISOString();
+        }
+        // Fallback: try Date.parse
+        const parsed = new Date(value);
+        if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+        return null;
+      };
+
+      // Validate timezone if a scheduled date is provided
+      if (scheduledFor && scheduleTimezone && !['UTC','America/New_York','America/Chicago','America/Los_Angeles','Europe/London','Europe/Berlin','Asia/Kolkata','Asia/Tokyo','Australia/Sydney','AUTO'].includes(scheduleTimezone)) {
+        setMessage('Choose a valid schedule time zone.');
+        setBusy(false);
+        return;
+      }
+
+      const scheduled_for_value = parseDateInput(scheduledFor);
+
       const campaign = await apiFetch('/api/social/recurring', {
         method: 'POST',
         body: JSON.stringify({
@@ -75,8 +109,8 @@ export default function RecurringCampaigns() {
           cadence,
           account_ids: accountIds,
           whatsapp_recipient: whatsappRecipient.trim() || null,
-          scheduled_for: scheduledFor || null,
-          schedule_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+          scheduled_for: scheduled_for_value || null,
+          schedule_timezone: scheduleTimezone === 'AUTO' || !scheduleTimezone ? Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' : scheduleTimezone,
         }),
       });
       setItems((current) => [...current, { ...campaign, recentPosts: [], upcomingAngles: campaign.subtopics || [] }]);
@@ -117,7 +151,22 @@ export default function RecurringCampaigns() {
         return <label className="field account-choice" key={platform}><span>{platformName(platform)} account</span><select value={accountIds[platform] || ''} onChange={(event) => setAccountIds((current) => ({ ...current, [platform]: event.target.value }))}><option value="">Use the default connected account</option>{choices.map((account) => <option key={account.id} value={account.id}>{account.label}</option>)}</select></label>;
       })}
       {platforms.includes('whatsapp') ? <label className="field whatsapp-recipient"><span>Opted-in WhatsApp recipient</span><input type="tel" value={whatsappRecipient} onChange={(event) => setWhatsappRecipient(event.target.value)} placeholder="+234..." required /><small>Only use a recipient who has opted in to receive WhatsApp Business messages.</small></label> : null}
-      <div className="recurring-controls"><label className="field"><span>Post cadence</span><select value={cadence} onChange={(event) => setCadence(event.target.value)}><option value="daily">Once a day</option><option value="weekly">Once a week</option></select></label><label className="field"><span>First post</span><input type="datetime-local" value={scheduledFor} onChange={(event) => setScheduledFor(event.target.value)} /><small>Leave blank to begin on the next scheduler check.</small></label></div>
+      <div className="recurring-controls">
+        <label className="field"><span>Post cadence</span><select value={cadence} onChange={(event) => setCadence(event.target.value)}><option value="daily">Once a day</option><option value="weekly">Once a week</option></select></label>
+        <label className="field"><span>First post</span><input type="datetime-local" value={scheduledFor} onChange={(event) => setScheduledFor(event.target.value)} /><small>Leave blank to begin on the next scheduler check.</small></label>
+        <label className="field"><span>Schedule time zone</span><select value={scheduleTimezone} onChange={(e) => setScheduleTimezone(e.target.value)}>
+          <option value="">Auto (detected)</option>
+          <option value="UTC">UTC</option>
+          <option value="America/New_York">America/New_York</option>
+          <option value="America/Chicago">America/Chicago</option>
+          <option value="America/Los_Angeles">America/Los_Angeles</option>
+          <option value="Europe/London">Europe/London</option>
+          <option value="Europe/Berlin">Europe/Berlin</option>
+          <option value="Asia/Kolkata">Asia/Kolkata</option>
+          <option value="Asia/Tokyo">Asia/Tokyo</option>
+          <option value="Australia/Sydney">Australia/Sydney</option>
+        </select><small>Choose a valid schedule time zone.</small></label>
+      </div>
       <button className="primary" disabled={busy || !topic.trim() || !platforms.length}>{busy ? 'Starting...' : 'Start recurring campaign'}</button>
     </form>
     {message ? <p className="connection-message" role="status">{message}</p> : null}
