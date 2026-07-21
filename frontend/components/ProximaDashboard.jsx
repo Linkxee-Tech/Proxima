@@ -350,15 +350,33 @@ function DashboardShell() {
     }
   };
 
-  const handleApprove = async () => {
+  const handleApprove = async (socialOptions = {}) => {
     if (!approvalWorkflow) return;
 
     try {
+      if (approvalWorkflow.socialDrafts) {
+        const campaign = await apiFetch('/api/social/publish', {
+          method: 'POST',
+          body: JSON.stringify({
+            content: approvalWorkflow.socialDrafts,
+            platforms: Object.keys(approvalWorkflow.socialDrafts),
+            account_ids: socialOptions.accountIds || {},
+            scheduled_for: socialOptions.scheduledFor || null,
+            schedule_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+            whatsapp_recipient: socialOptions.whatsappRecipient || null,
+            approved: !socialOptions.scheduledFor,
+          }),
+        });
+        if (campaign.status === 'failed') {
+          const firstFailure = Object.values(campaign.results || {}).find((item) => item.status === 'failed');
+          throw new Error(firstFailure?.error || 'Campaign publishing failed.');
+        }
+      }
       await apiFetch(`/api/workflows/${approvalWorkflow.id}/approve`, {
         method: 'POST',
         body: JSON.stringify({ all: Boolean(approvalWorkflow.socialDrafts) }),
       });
-      pushToast('Thank you. I will continue from here.', 'success');
+      pushToast(approvalWorkflow.socialDrafts ? (socialOptions.scheduledFor ? 'Campaign scheduled. Proxima will post it at the selected time.' : 'Campaign delivery has started. Check Campaigns for each provider result.') : 'Thank you. I will continue from here.', 'success');
       setApprovalWorkflow(null);
       await loadDashboard(true);
     } catch (err) {

@@ -292,11 +292,13 @@ async def publish(payload: SocialPublishRequest, user: dict = Depends(current_us
         "id": store.id(), "userId": user["id"], "content": {platform: payload.content[platform].strip() for platform in platforms},
         "platforms": platforms, "accountIds": {platform: payload.account_ids[platform] for platform in platforms if payload.account_ids.get(platform)}, "imageId": payload.image_id, "imageUrl": payload.image_url,
         "whatsappRecipient": payload.whatsapp_recipient, "scheduledFor": scheduled_for,
-        "status": "scheduled" if scheduled_for else "awaiting_approval", "results": {}, "createdAt": now(),
+        "status": "scheduled" if scheduled_for else "publishing" if payload.approved else "awaiting_approval", "results": {}, "createdAt": now(),
     }
     with store.lock:
         store.data.setdefault("socialPosts", []).append(post)
         store.save()
+    if payload.approved and not scheduled_for:
+        return await deliver(post)
     return post
 
 

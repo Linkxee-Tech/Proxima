@@ -64,3 +64,4 @@ class SocialPublishRequest(BaseModel):
     schedule_timezone: str = Field(default="UTC", max_length=100)
     whatsapp_recipient: str | None = Field(default=None, max_length=32)
     account_ids: dict[str, str] = Field(default_factory=dict)
+    approved: bool = False
