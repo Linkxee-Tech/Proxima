@@ -11,7 +11,7 @@ const items = [
   ['/dashboard/approvals', 'Needs Your Approval', 'shield'],
   ['/dashboard/memory', 'Knowledge', 'brain'],
   ['/dashboard/social', 'Campaigns', 'share'],
-  ['/dashboard/history', 'Activity', 'clock'],
+  ['/dashboard/history', 'History', 'clock'],
   ['/dashboard/insights', 'Insights', 'activity'],
   ['/dashboard/settings', 'Settings', 'settings'],
   ['/dashboard/integrations', 'Connected Apps', 'plug'],
