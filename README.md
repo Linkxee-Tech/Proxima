@@ -1,17 +1,30 @@
 # Proxima
 
-Proxima is a work companion for turning a written request into a clear plan. It prepares the next steps, keeps the work in one place, and asks for approval before an action is sent to a connected service.
+Proxima is a work companion for turning a written request into prepared, reviewable work. It keeps plans, drafts, approvals, connected accounts, and activity in one place so the user remains in control of what is sent or scheduled.
 
 ## What it does
 
-- Capture a work request and present a reviewable plan.
-- Keep progress, approvals, results, and recent activity together.
-- Draft social campaigns for selected platforms.
+- Turn a work request into a plan and an editable prepared draft.
+- Improve a prepared draft with the configured OpenAI model, then save or download it.
+- Keep progress, approvals, results, history, and saved work together.
+- Generate channel-specific social drafts, edit them, and approve them for delivery.
+- Select a connected X, LinkedIn, or Facebook account when more than one is available.
+- Schedule a one-time campaign or run a recurring daily or weekly topic series until it is stopped.
 - Connect supported services through their own sign-in flows.
 - Send a user-authored message through a connected Slack workspace.
 - Deliver live updates to signed-in users.
 
 Proxima has a Next.js web application and a FastAPI service. Local development uses a JSON data store. A PostgreSQL-compatible store can be selected for hosted environments.
+
+## Social campaigns
+
+The Campaigns workspace creates editable drafts for X, LinkedIn, Facebook Pages, and WhatsApp Business. A saved campaign appears in **Needs Your Approval** and can be published immediately or scheduled. Delivery results are stored per provider so the interface does not report a post as sent when a provider rejected it.
+
+The **Recurring campaigns** workspace turns one topic, such as “Cyber security,” into a series of subtopics. It generates and posts the next instalment at the selected daily or weekly cadence until the user stops the campaign.
+
+Before enabling publishing, connect the appropriate accounts in **Connected Apps**. Use **Add account** to connect another X, LinkedIn, or Facebook account. WhatsApp Business sends a direct message, so it requires an opted-in recipient and valid Cloud API credentials.
+
+Text publishing is implemented. Images remain available in campaign previews, but provider-specific media upload flows are not yet implemented, so an image is not silently claimed as published.
 
 ## Project layout
 
@@ -66,6 +79,10 @@ PROXIMA_CORS_ORIGINS=https://your-frontend.example
 PROXIMA_PUBLIC_APP_URL=https://your-frontend.example
 PROXIMA_PUBLIC_API_URL=https://your-api.example
 PROXIMA_FRONTEND_CALLBACK_URL=https://your-frontend.example/dashboard/integrations
+PROXIMA_SOCIAL_SCHEDULER_INTERVAL_SECONDS=30
+PROXIMA_LINKEDIN_API_VERSION=202606
+PROXIMA_META_GRAPH_API_VERSION=v22.0
+FACEBOOK_PAGE_ID=
 
 # Password reset email
 PROXIMA_SMTP_HOST=smtp.example.com
@@ -92,6 +109,10 @@ Before release, confirm that:
 4. A request can reach an approval step and be completed.
 5. Persistent data survives an application restart.
 6. Every enabled provider callback matches its deployed URL exactly.
+7. A social post can be approved and its provider result appears in Campaigns.
+8. The scheduled-post worker stays available for every campaign that needs exact delivery times.
+
+Recurring and scheduled campaigns are checked by the backend while it is running. A host that sleeps inactive services cannot guarantee an exact posting time; use an always-on worker or host for reliable scheduling.
 
 The backend includes a `Dockerfile` and `Procfile`. The frontend can be deployed to Vercel or another Node.js host.
 
