@@ -227,17 +227,33 @@ async def publish_platform(post: dict, platform: str) -> dict:
 
 async def deliver(post: dict) -> dict:
     results: dict[str, dict] = {}
+    max_retries = settings.proxima_social_max_retries
+    base_backoff = settings.proxima_social_retry_backoff_seconds
     for platform in post["platforms"]:
-        try:
-            results[platform] = await publish_platform(post, platform)
-        except PublishError as error:
-            results[platform] = {"status": "failed", "error": str(error), "publishedAt": now()}
-        except httpx.HTTPError:
-            results[platform] = {"status": "failed", "error": f"{platform.title()} could not be reached. Try again shortly.", "publishedAt": now()}
-        except Exception:
-            logger.exception("Unexpected %s publishing failure for post %s", platform, post.get("id"))
-            results[platform] = {"status": "failed", "error": f"{platform.title()} could not be delivered. Review the connection and try again.", "publishedAt": now()}
-    succeeded = [item for item in results.values() if item["status"] == "published"]
+        attempt = 0
+        last_error = None
+        while attempt <= max_retries:
+            try:
+                attempt += 1
+                results[platform] = await publish_platform(post, platform)
+                # success
+                break
+            except PublishError as error:
+                last_error = str(error)
+                logger.warning("Publish attempt %d/%d failed for post %s platform %s: %s", attempt, max_retries, post.get("id"), platform, last_error)
+            except httpx.HTTPError as error:
+                last_error = f"{platform.title()} could not be reached. {str(error)[:200]}"
+                logger.warning("Publish attempt %d/%d HTTP error for post %s platform %s: %s", attempt, max_retries, post.get("id"), platform, last_error)
+            except Exception as error:
+                last_error = f"Unexpected error: {str(error)[:200]}"
+                logger.exception("Unexpected publishing failure for post %s platform %s on attempt %d", post.get("id"), platform, attempt)
+            # If we've exhausted retries, record failure; otherwise back off and retry
+            if attempt > max_retries:
+                results[platform] = {"status": "failed", "error": last_error or "Unknown error", "publishedAt": now()}
+                break
+            backoff = base_backoff * (2 ** (attempt - 1))
+            await asyncio.sleep(backoff)
+    succeeded = [item for item in results.values() if item.get("status") == "published"]
     post["results"] = results
     post["status"] = "published" if len(succeeded) == len(results) else "partial_failed" if succeeded else "failed"
     post["publishedAt"] = now() if succeeded else None
