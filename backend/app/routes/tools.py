@@ -64,7 +64,10 @@ async def send_workflow_update(user_id: str, text: str) -> bool:
 @router.get("")
 def list_tools(user: dict = Depends(current_user)) -> dict:
     linked = {item["tool"]: item for item in connections(user["id"])}
-    return {"items": [{"name": tool.name, "label": tool.label, "connected": name in linked, "configured": tool.configured(), "connectionRequired": tool.oauth, "scopes": list(tool.scopes), "expiresAt": linked.get(name, {}).get("expiresAt")} for name, tool in TOOLS.items()]}
+    counts: dict[str, int] = {}
+    for connection in connections(user["id"]):
+        counts[connection["tool"]] = counts.get(connection["tool"], 0) + 1
+    return {"items": [{"name": tool.name, "label": tool.label, "connected": name in linked, "connectionCount": counts.get(name, 0), "configured": tool.configured(), "connectionRequired": tool.oauth, "scopes": list(tool.scopes), "expiresAt": linked.get(name, {}).get("expiresAt")} for name, tool in TOOLS.items()]}
 
 @router.post("/{tool_name}/connect")
 def connect(tool_name: str, user: dict = Depends(current_user)) -> dict:
@@ -98,7 +101,9 @@ async def exchange(tool_name: str, code: str, state: str) -> None:
     expires_at = time.time() + float(expires_in) if expires_in else None
     record = {"id": store.id(), "userId": pending["userId"], "tool":tool_name, "accessToken":encrypt(token["access_token"]), "refreshToken":encrypt(token["refresh_token"]) if token.get("refresh_token") else None, "expiresAt":expires_at, "scopes":token.get("scope", " ".join(tool.scopes)).split(), "connectedAt":time.time()}
     with store.lock:
-        store.data["oauthStates"].remove(pending); store.data.setdefault("connections", [])[:] = [item for item in store.data["connections"] if not (item["userId"] == record["userId"] and item["tool"] == tool_name)]; store.data["connections"].append(record); store.save()
+        store.data["oauthStates"].remove(pending)
+        store.data.setdefault("connections", []).append(record)
+        store.save()
 
 @router.get("/{tool_name}/callback")
 async def callback_redirect(tool_name: str, code: str, state: str) -> RedirectResponse:

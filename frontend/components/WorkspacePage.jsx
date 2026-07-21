@@ -54,8 +54,17 @@ function Inner({ kind }) {
   const [approvalToReview, setApprovalToReview] = useState(null);
   const load = useCallback(async () => {
     try {
-      const result = kind === 'memory' ? await apiFetch('/api/memory/search?q=') : await apiFetch('/api/workflows');
-      setData(result.items || []); setError('');
+      if (kind === 'memory') {
+        const result = await apiFetch('/api/memory/search?q=');
+        setData(result.items || []);
+      } else if (kind === 'approvals') {
+        const [workflows, social] = await Promise.all([apiFetch('/api/workflows'), apiFetch('/api/social/posts')]);
+        setData([...(workflows.items || []), ...(social.items || []).map((item) => ({ ...item, itemType: 'social' }))]);
+      } else {
+        const result = await apiFetch('/api/workflows');
+        setData(result.items || []);
+      }
+      setError('');
     } catch (err) { setError(err.message); }
   }, [kind]);
   useEffect(() => { load(); }, [load]);
@@ -80,7 +89,8 @@ function Inner({ kind }) {
     if (action === 'add' || action === 'edit') { openMemoryEditor(item, action); return; }
     setBusyId(item.id); setError('');
     try {
-      if (action === 'delete') await apiFetch(`/api/memory/${item.id}`, { method: 'DELETE' });
+      if (item.itemType === 'social' && action === 'approve') await apiFetch(`/api/social/${item.id}/approve`, { method: 'POST', body: '{}' });
+      else if (action === 'delete') await apiFetch(`/api/memory/${item.id}`, { method: 'DELETE' });
       else if (action === 'rerun') await apiFetch(`/api/workflows/${item.id}/rerun`, { method: 'POST', body: '{}' });
       else if (action === 'start') await apiFetch(`/api/workflows/${item.id}/start`, { method: 'POST', body: '{}' });
       else await apiFetch(`/api/workflows/${item.id}/approve`, { method: 'POST', body: JSON.stringify({ all: Boolean(item.socialDrafts) }) });
@@ -120,7 +130,7 @@ function Inner({ kind }) {
     try { await apiFetch('/api/approvals/batch', { method: 'POST', body: JSON.stringify({ approval_ids: approvalIds, action }) }); await load(); }
     catch (err) { setError(err.message); } finally { setBusyId(''); }
   };
-  const renderCard = (item) => <article className="resource-card" key={item.id}><strong>{item.goalText || item.text || item.title || 'Saved information'}</strong><span className="muted">{statusLabel(item)}{kind === 'history' ? ` · ${timeLabel(item.updatedAt || item.createdAt)}` : ''}</span>{kind === 'memory' ? <div className="action-row"><button className="ghost" disabled={busyId === item.id} onClick={() => act(item, 'edit')}>Edit</button><button className="secondary" disabled={busyId === item.id} onClick={() => act(item, 'delete')}>Forget</button></div> : null}{kind === 'drafts' ? <button className="primary" disabled={busyId === item.id} onClick={() => act(item, 'start')}>Start this work</button> : null}{item.status === 'deferred' ? <button className="primary" disabled={busyId === item.id} onClick={() => resumeApproval(item)}>Review now</button> : null}{kind === 'history' ? <button className="ghost" disabled={busyId === item.id} onClick={() => act(item, 'rerun')}>Do this again</button> : null}{kind === 'approvals' ? <button className="primary" disabled={busyId === item.id} onClick={() => setApprovalToReview(item)}>Review</button> : null}</article>;
+  const renderCard = (item) => item.itemType === 'social' ? <article className="resource-card social-approval-card" key={item.id}><strong>Campaign ready to publish</strong><span className="muted">{item.platforms.map((platform) => platform === 'twitter' ? 'Twitter / X' : platform === 'whatsapp' ? 'WhatsApp Business' : platform[0].toUpperCase() + platform.slice(1)).join(' · ')}</span><div className="approval-draft-list">{Object.entries(item.content || {}).map(([platform, text]) => <div key={platform}><small>{platform === 'twitter' ? 'Twitter / X' : platform}</small><p>{text}</p></div>)}</div><button className="primary" disabled={busyId === item.id} onClick={() => act(item, 'approve')}>{busyId === item.id ? 'Publishing…' : 'Approve & publish now'}</button></article> : <article className="resource-card" key={item.id}><strong>{item.goalText || item.text || item.title || 'Saved information'}</strong><span className="muted">{statusLabel(item)}{kind === 'history' ? ` · ${timeLabel(item.updatedAt || item.createdAt)}` : ''}</span>{kind === 'memory' ? <div className="action-row"><button className="ghost" disabled={busyId === item.id} onClick={() => act(item, 'edit')}>Edit</button><button className="secondary" disabled={busyId === item.id} onClick={() => act(item, 'delete')}>Forget</button></div> : null}{kind === 'drafts' ? <button className="primary" disabled={busyId === item.id} onClick={() => act(item, 'start')}>Start this work</button> : null}{item.status === 'deferred' ? <button className="primary" disabled={busyId === item.id} onClick={() => resumeApproval(item)}>Review now</button> : null}{kind === 'history' ? <button className="ghost" disabled={busyId === item.id} onClick={() => act(item, 'rerun')}>Do this again</button> : null}{kind === 'approvals' ? <button className="primary" disabled={busyId === item.id} onClick={() => setApprovalToReview(item)}>Review</button> : null}</article>;
   const renderEmpty = (text) => <div className="details-empty compact">{text}</div>;
   const renderWork = () => {
     const groups = [

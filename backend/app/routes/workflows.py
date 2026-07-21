@@ -1,12 +1,14 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from openai import AsyncOpenAI
 
+from ..core.config import settings
 from ..core.realtime import realtime
 from ..core.security import current_user
 from ..core.store import store
 from ..kernel.intent import parse_goal
-from ..schemas import ApprovalRequest, GoalRequest
+from ..schemas import ApprovalRequest, ArtifactUpdateRequest, GoalRequest
 from .tools import send_workflow_update
 
 router = APIRouter(tags=["workflows"])
@@ -393,6 +395,59 @@ def download_artifact(workflow_id: str, artifact_id: str, user: dict = Depends(c
         raise HTTPException(status_code=404, detail="Artifact not found.")
     filename = f"{item['title'].lower().replace(' ', '-')}.{item.get('extension', 'txt')}"
     return Response(item.get("content", ""), media_type="text/plain; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+def workflow_artifact(workflow_id: str, artifact_id: str, user_id: str) -> tuple[dict, dict]:
+    workflow = owned(workflow_id, user_id)
+    item = next((artifact_item for artifact_item in workflow.get("artifacts", []) if artifact_item["id"] == artifact_id), None)
+    if not item:
+        raise HTTPException(status_code=404, detail="Artifact not found.")
+    return workflow, item
+
+
+def save_artifact_content(workflow: dict, item: dict, content: str) -> dict:
+    item["content"] = content.strip()
+    item["updatedAt"] = now()
+    work_product = workflow.get("parsed", {}).get("workProduct")
+    if work_product and item["title"] in {"Prepared work plan", "Prepared work for review", work_product.get("title")}:
+        work_product["content"] = item["content"]
+    workflow["updatedAt"] = now()
+    workflow["auditTrail"].insert(0, audit(f"Updated: {item['title']}."))
+    with store.lock:
+        store.save()
+    return workflow
+
+
+@router.patch("/workflows/{workflow_id}/artifacts/{artifact_id}")
+async def update_artifact(workflow_id: str, artifact_id: str, payload: ArtifactUpdateRequest, user: dict = Depends(current_user)) -> dict:
+    workflow, item = workflow_artifact(workflow_id, artifact_id, user["id"])
+    return save_artifact_content(workflow, item, payload.content)
+
+
+@router.post("/workflows/{workflow_id}/artifacts/{artifact_id}/improve")
+async def improve_artifact(workflow_id: str, artifact_id: str, user: dict = Depends(current_user)) -> dict:
+    workflow, item = workflow_artifact(workflow_id, artifact_id, user["id"])
+    if not settings.openai_api_key:
+        raise HTTPException(status_code=503, detail="OpenAI drafting is not configured. Add OPENAI_API_KEY to improve this work.")
+    prompt = (
+        "Expand the following prepared office-work document into a comprehensive, ready-to-edit deliverable. "
+        "Preserve known facts, clearly label assumptions and missing information, and do not invent market data, prices, "
+        "people, dates, or sources. For research, include a comparison framework, source plan, evidence table template, "
+        "findings structure, risks, and recommended next actions. Return only the improved document, with clear headings.\n\n"
+        f"Goal: {workflow['goalText']}\n\nCurrent document:\n{item.get('content', '')}"
+    )
+    try:
+        client = AsyncOpenAI(api_key=settings.openai_api_key)
+        response = await client.chat.completions.create(
+            model=settings.proxima_openai_model,
+            messages=[{"role": "system", "content": "You write accurate, useful office deliverables."}, {"role": "user", "content": prompt}],
+        )
+        content = (response.choices[0].message.content or "").strip()
+    except Exception as error:
+        raise HTTPException(status_code=502, detail="OpenAI could not improve this draft. Try again shortly.") from error
+    if not content:
+        raise HTTPException(status_code=502, detail="OpenAI returned an empty draft. Try again shortly.")
+    return save_artifact_content(workflow, item, content[:20000])
 
 
 @router.post("/workflows/{workflow_id}/approve")

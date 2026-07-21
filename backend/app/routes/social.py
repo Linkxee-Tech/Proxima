@@ -102,8 +102,8 @@ async def generate_image(prompt: str, user_id: str) -> dict:
     return image_record(user_id, filename, "image/png", len(payload), "ai_generated")
 
 
-def connection_token(user_id: str, platform: str) -> str:
-    connection = next((item for item in store.data.setdefault("connections", []) if item["userId"] == user_id and item["tool"] == platform), None)
+def connection_token(user_id: str, platform: str, account_id: str | None = None) -> str:
+    connection = next((item for item in store.data.setdefault("connections", []) if item["userId"] == user_id and item["tool"] == platform and (not account_id or item["id"] == account_id)), None)
     if not connection:
         label = "Twitter / X" if platform == "twitter" else platform.title()
         raise PublishError(f"Connect {label} in Integrations before publishing.")
@@ -191,12 +191,13 @@ async def publish_whatsapp(text: str, recipient: str | None) -> dict:
 
 async def publish_platform(post: dict, platform: str) -> dict:
     text = post["content"][platform]
+    account_id = (post.get("accountIds") or {}).get(platform)
     if platform == "twitter":
-        result = await publish_twitter(connection_token(post["userId"], platform), text)
+        result = await publish_twitter(connection_token(post["userId"], platform, account_id), text)
     elif platform == "linkedin":
-        result = await publish_linkedin(connection_token(post["userId"], platform), text)
+        result = await publish_linkedin(connection_token(post["userId"], platform, account_id), text)
     elif platform == "facebook":
-        result = await publish_facebook(connection_token(post["userId"], platform), text)
+        result = await publish_facebook(connection_token(post["userId"], platform, account_id), text)
     else:
         result = await publish_whatsapp(text, post.get("whatsappRecipient"))
     if post.get("imageId") or post.get("imageUrl"):
@@ -289,7 +290,7 @@ async def publish(payload: SocialPublishRequest, user: dict = Depends(current_us
     scheduled_for = parse_schedule(payload.scheduled_for, payload.schedule_timezone)
     post = {
         "id": store.id(), "userId": user["id"], "content": {platform: payload.content[platform].strip() for platform in platforms},
-        "platforms": platforms, "imageId": payload.image_id, "imageUrl": payload.image_url,
+        "platforms": platforms, "accountIds": {platform: payload.account_ids[platform] for platform in platforms if payload.account_ids.get(platform)}, "imageId": payload.image_id, "imageUrl": payload.image_url,
         "whatsappRecipient": payload.whatsapp_recipient, "scheduledFor": scheduled_for,
         "status": "scheduled" if scheduled_for else "awaiting_approval", "results": {}, "createdAt": now(),
     }
@@ -324,6 +325,17 @@ def posts(user: dict = Depends(current_user)) -> dict:
     return {"items": sorted(items, key=lambda item: item["createdAt"], reverse=True)}
 
 
+@router.get("/accounts")
+def accounts(user: dict = Depends(current_user)) -> dict:
+    labels = {"twitter": "Twitter / X", "linkedin": "LinkedIn", "facebook": "Facebook Pages"}
+    items = []
+    for connection in store.data.setdefault("connections", []):
+        if connection["userId"] != user["id"] or connection["tool"] not in labels:
+            continue
+        items.append({"id": connection["id"], "platform": connection["tool"], "label": connection.get("accountLabel") or f"{labels[connection['tool']]} account", "connectedAt": connection.get("connectedAt")})
+    return {"items": items}
+
+
 @router.get("/scheduled")
 def scheduled(user: dict = Depends(current_user)) -> dict:
     return {"items": [post for post in store.data.setdefault("socialPosts", []) if post["userId"] == user["id"] and post["status"] == "scheduled"]}
@@ -347,7 +359,7 @@ def update_post(post_id: str, payload: SocialPublishRequest, user: dict = Depend
         raise HTTPException(status_code=409, detail="Only scheduled or unapproved posts can be edited.")
     if payload.image_url and not valid_sample_url(payload.image_url) and not payload.image_id:
         raise HTTPException(status_code=422, detail="Image URL must come from the sample gallery or an uploaded image.")
-    post.update({"content": payload.content, "platforms": payload.platforms, "imageId": payload.image_id, "imageUrl": payload.image_url, "whatsappRecipient": payload.whatsapp_recipient, "scheduledFor": parse_schedule(payload.scheduled_for, payload.schedule_timezone), "updatedAt": now()})
+    post.update({"content": payload.content, "platforms": payload.platforms, "accountIds": payload.account_ids, "imageId": payload.image_id, "imageUrl": payload.image_url, "whatsappRecipient": payload.whatsapp_recipient, "scheduledFor": parse_schedule(payload.scheduled_for, payload.schedule_timezone), "updatedAt": now()})
     store.save()
     return post
 

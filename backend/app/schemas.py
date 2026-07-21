@@ -44,6 +44,10 @@ class ApprovalRequest(BaseModel):
     all: bool = False
 
 
+class ArtifactUpdateRequest(BaseModel):
+    content: str = Field(min_length=1, max_length=20000)
+
+
 class SocialDraftRequest(BaseModel):
     goal: str = Field(min_length=1, max_length=12000)
     platforms: list[str] = Field(default_factory=lambda: ["twitter", "linkedin", "facebook", "whatsapp"])
@@ -59,3 +63,4 @@ class SocialPublishRequest(BaseModel):
     scheduled_for: datetime | None = None
     schedule_timezone: str = Field(default="UTC", max_length=100)
     whatsapp_recipient: str | None = Field(default=None, max_length=32)
+    account_ids: dict[str, str] = Field(default_factory=dict)

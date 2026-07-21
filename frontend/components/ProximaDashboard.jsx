@@ -437,6 +437,28 @@ function DashboardShell() {
     } catch (err) { pushToast(err.message || 'Could not download artifact.', 'error'); }
   };
 
+  const replaceWorkflow = (workflow) => {
+    setWorkflows((current) => [workflow, ...current.filter((item) => item.id !== workflow.id)]);
+  };
+
+  const saveArtifact = async (workflow, artifact, content) => {
+    try {
+      const updated = await apiFetch(`/api/workflows/${workflow.id}/artifacts/${artifact.id}`, { method: 'PATCH', body: JSON.stringify({ content }) });
+      replaceWorkflow(updated);
+      pushToast('Your changes were saved.', 'success');
+    } catch (err) { pushToast(err.message || 'Could not save this work.', 'error'); throw err; }
+  };
+
+  const improveArtifact = async (workflow, artifact) => {
+    try {
+      const updated = await apiFetch(`/api/workflows/${workflow.id}/artifacts/${artifact.id}/improve`, { method: 'POST', body: '{}' });
+      replaceWorkflow(updated);
+      const nextArtifact = updated.artifacts.find((item) => item.id === artifact.id);
+      pushToast('The draft has been expanded for your review.', 'success');
+      return nextArtifact;
+    } catch (err) { pushToast(err.message || 'Could not improve this draft.', 'error'); throw err; }
+  };
+
   const sample = (value) => {
     setInputValue(value);
       pushToast('Example added. You can change it before starting.', 'info');
@@ -860,7 +882,7 @@ function DashboardShell() {
                 <div className="artifacts">
                   {selectedWorkflow.artifacts.length ? (
                     selectedWorkflow.artifacts.map((artifact) => (
-                      <ArtifactCard key={artifact.id} artifact={artifact} onDownload={(nextArtifact) => downloadArtifact(selectedWorkflow, nextArtifact)} />
+                      <ArtifactCard key={artifact.id} artifact={artifact} onDownload={(nextArtifact) => downloadArtifact(selectedWorkflow, nextArtifact)} onSave={(nextArtifact, content) => saveArtifact(selectedWorkflow, nextArtifact, content)} onImprove={(nextArtifact) => improveArtifact(selectedWorkflow, nextArtifact)} />
                     ))
                   ) : (
                     <div className="details-empty compact">Nothing is ready to review yet.</div>

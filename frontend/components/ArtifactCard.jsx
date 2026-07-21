@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Icon from './Icon';
 
 const iconFor = (type = '') => {
@@ -11,6 +12,18 @@ const iconFor = (type = '') => {
   return 'fileText';
 };
 
-export default function ArtifactCard({ artifact, onDownload }) {
-  return <article className="artifact"><div className="artifact-head"><div className="with-icon"><span className="artifact-icon"><Icon name={iconFor(artifact.type)} /></span><div><h4>{artifact.title}</h4><small>{artifact.type}</small></div></div><button type="button" className="ghost with-icon" onClick={() => onDownload?.(artifact)}><Icon name="download" size={15} /> Download</button></div><pre>{artifact.content}</pre></article>;
+export default function ArtifactCard({ artifact, onDownload, onSave, onImprove }) {
+  const [editing, setEditing] = useState(false);
+  const [content, setContent] = useState(artifact.content || '');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setContent(artifact.content || ''); }, [artifact.content]);
+  const save = async () => {
+    setBusy(true);
+    try { await onSave?.(artifact, content); setEditing(false); } finally { setBusy(false); }
+  };
+  const improve = async () => {
+    setBusy(true);
+    try { const updated = await onImprove?.(artifact); if (updated?.content) setContent(updated.content); } finally { setBusy(false); }
+  };
+  return <article className="artifact"><div className="artifact-head"><div className="with-icon"><span className="artifact-icon"><Icon name={iconFor(artifact.type)} /></span><div><h4>{artifact.title}</h4><small>{artifact.type}</small></div></div><div className="action-row"><button type="button" className="ghost with-icon" disabled={busy} onClick={() => setEditing((value) => !value)}><Icon name="fileText" size={15} /> {editing ? 'Preview' : 'Edit'}</button><button type="button" className="ghost with-icon" disabled={busy} onClick={improve}><Icon name="spark" size={15} /> Improve with AI</button><button type="button" className="ghost with-icon" onClick={() => onDownload?.(artifact)}><Icon name="download" size={15} /> Download</button></div></div>{editing ? <><label className="field artifact-editor"><span>Edit this prepared work before continuing</span><textarea rows={18} value={content} onChange={(event) => setContent(event.target.value)} /></label><div className="action-row"><button type="button" className="secondary" disabled={busy} onClick={() => { setContent(artifact.content || ''); setEditing(false); }}>Discard changes</button><button type="button" className="primary" disabled={busy || !content.trim()} onClick={save}>{busy ? 'Saving…' : 'Save changes'}</button></div></> : <pre>{content}</pre>}</article>;
 }

@@ -363,6 +363,19 @@ def test_artifact_download_and_prometheus_metrics_are_available() -> None:
     assert client.get("/api/v1/metrics/prometheus").status_code == 200
 
 
+def test_prepared_artifact_can_be_edited_before_work_continues() -> None:
+    auth = headers()
+    workflow = client.post("/api/v1/workflows", json={"goalText": "Research competitor pricing"}, headers=auth).json()
+    artifact = workflow["artifacts"][0]
+    updated = client.patch(
+        f"/api/v1/workflows/{workflow['id']}/artifacts/{artifact['id']}",
+        json={"content": "RESEARCH REPORT\n\nVerified scope and comparison criteria."},
+        headers=auth,
+    )
+    assert updated.status_code == 200
+    assert updated.json()["artifacts"][0]["content"].startswith("RESEARCH REPORT")
+
+
 def test_saved_draft_can_be_started_and_deferred_for_later() -> None:
     auth = headers()
     draft = client.post("/api/v1/workflows/drafts", json={"goalText": "Send a customer update email"}, headers=auth)
