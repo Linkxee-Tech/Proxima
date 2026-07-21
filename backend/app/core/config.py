@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     linkedin_client_secret: str = ""
     facebook_app_id: str = ""
     facebook_app_secret: str = ""
+    facebook_page_id: str = ""
+    proxima_meta_graph_api_version: str = "v22.0"
+    proxima_linkedin_api_version: str = "202606"
+    proxima_social_scheduler_interval_seconds: int = 30
     whatsapp_access_token: str = ""
     whatsapp_phone_number_id: str = ""
     whatsapp_business_account_id: str = ""

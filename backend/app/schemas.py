@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, EmailStr, Field
 
 
@@ -54,4 +56,6 @@ class SocialPublishRequest(BaseModel):
     platforms: list[str]
     image_id: str | None = None
     image_url: str | None = None
-    scheduled_for: str | None = None
+    scheduled_for: datetime | None = None
+    schedule_timezone: str = Field(default="UTC", max_length=100)
+    whatsapp_recipient: str | None = Field(default=None, max_length=32)

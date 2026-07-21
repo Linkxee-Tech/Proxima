@@ -94,7 +94,9 @@ async def exchange(tool_name: str, code: str, state: str) -> None:
             response = await client.post(tool.token_url, data=body, headers=headers); response.raise_for_status(); token = response.json()
     except httpx.HTTPError as error:
         raise HTTPException(status_code=502, detail="Provider token exchange failed.") from error
-    record = {"id": store.id(), "userId": pending["userId"], "tool":tool_name, "accessToken":encrypt(token["access_token"]), "refreshToken":encrypt(token["refresh_token"]) if token.get("refresh_token") else None, "expiresAt":token.get("expires_in"), "scopes":token.get("scope", " ".join(tool.scopes)).split(), "connectedAt":time.time()}
+    expires_in = token.get("expires_in")
+    expires_at = time.time() + float(expires_in) if expires_in else None
+    record = {"id": store.id(), "userId": pending["userId"], "tool":tool_name, "accessToken":encrypt(token["access_token"]), "refreshToken":encrypt(token["refresh_token"]) if token.get("refresh_token") else None, "expiresAt":expires_at, "scopes":token.get("scope", " ".join(tool.scopes)).split(), "connectedAt":time.time()}
     with store.lock:
         store.data["oauthStates"].remove(pending); store.data.setdefault("connections", [])[:] = [item for item in store.data["connections"] if not (item["userId"] == record["userId"] and item["tool"] == tool_name)]; store.data["connections"].append(record); store.save()
 

@@ -249,6 +249,7 @@ def test_social_draft_and_approval_workflow(monkeypatch) -> None:
     response = client.post("/api/v1/social/draft", json={"goal":"Launch v2", "platforms":["twitter", "linkedin"]}, headers=auth)
     assert response.status_code == 200
     assert set(response.json()["drafts"]) == {"twitter", "linkedin"}
+    assert response.json()["source"] == "template"
     image_response = client.post("/api/v1/social/draft", json={"goal":"Launch v2", "platforms":["twitter"], "generate_image":True}, headers=auth)
     assert image_response.status_code == 200
     assert image_response.json()["image"] is None
@@ -266,6 +267,45 @@ def test_social_draft_and_approval_workflow(monkeypatch) -> None:
     assert sample_post.json()["imageUrl"] == "/social-gallery/hero.png"
     workflow = client.post("/api/v1/deploy", json={"goalText":"Launch v2 on Twitter and LinkedIn"}, headers=auth)
     assert workflow.status_code == 201
+
+
+def test_social_campaign_persists_then_dispatches_after_approval(monkeypatch) -> None:
+    from app.core.crypto import encrypt
+    from app.core.security import access_token_user
+    from app.core.store import store
+    from app.routes import social
+
+    auth = headers()
+    user_id = access_token_user(auth["Authorization"].removeprefix("Bearer "))["id"]
+    with store.lock:
+        store.data.setdefault("connections", []).append({"id": store.id(), "userId": user_id, "tool": "twitter", "accessToken": encrypt("x-token"), "connectedAt": 0})
+        store.save()
+
+    sent: dict[str, object] = {}
+    class StubResponse:
+        is_success = True
+        status_code = 201
+        text = ""
+        headers: dict[str, str] = {}
+        def json(self): return {"data": {"id": "tweet-123"}}
+    class StubClient:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *_args): return None
+        async def post(self, url, **kwargs):
+            sent.update(url=url, **kwargs)
+            return StubResponse()
+    monkeypatch.setattr(social.httpx, "AsyncClient", lambda **_kwargs: StubClient())
+
+    created = client.post("/api/v1/social/publish", json={"content": {"twitter": "Launch v2"}, "platforms": ["twitter"]}, headers=auth)
+    assert created.status_code == 202 and created.json()["status"] == "awaiting_approval"
+    listed = client.get("/api/v1/social/posts", headers=auth)
+    assert listed.status_code == 200 and listed.json()["items"][0]["id"] == created.json()["id"]
+
+    published = client.post(f"/api/v1/social/{created.json()['id']}/approve", headers=auth)
+    assert published.status_code == 200
+    assert published.json()["status"] == "published"
+    assert published.json()["results"]["twitter"]["providerId"] == "tweet-123"
+    assert sent["url"] == "https://api.x.com/2/tweets"
 
 
 def test_approval_endpoint_advances_its_social_task() -> None:

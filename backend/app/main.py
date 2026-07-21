@@ -1,3 +1,5 @@
+import asyncio
+from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,7 +13,21 @@ from .middleware.rate_limit import RateLimitMiddleware
 from .middleware.exceptions import unhandled_exception
 from .routes import health, auth, workflows, memory, integrations, social, approvals, history, deploy, tools, metrics
 
-app = FastAPI(title="Proxima OS API", version="1.0.0", docs_url=None, redoc_url=None, openapi_url=None)
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    task = asyncio.create_task(social.scheduler_loop())
+    application.state.social_scheduler = task
+    try:
+        yield
+    finally:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+
+app = FastAPI(title="Proxima OS API", version="1.0.0", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 app.add_middleware(LoggingMiddleware)
 app.add_middleware(RateLimitMiddleware)
 app.add_exception_handler(Exception, unhandled_exception)
@@ -52,6 +68,7 @@ def root_openapi() -> RedirectResponse:
 
 Path(settings.proxima_data_dir, "uploads").mkdir(parents=True, exist_ok=True)
 app.mount("/media", StaticFiles(directory=str(Path(settings.proxima_data_dir) / "uploads"), check_dir=False), name="media")
+
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:

@@ -38,8 +38,8 @@ TOOLS = {
     "slack": ToolDefinition("slack", "Slack", "https://slack.com/oauth/v2/authorize", "https://slack.com/api/oauth.v2.access", ("chat:write", "channels:manage", "groups:read", "users:read", "incoming-webhook"), "SLACK_CLIENT_ID", "SLACK_CLIENT_SECRET"),
     "notion": ToolDefinition("notion", "Notion", "https://api.notion.com/v1/oauth/authorize", "https://api.notion.com/v1/oauth/token", ("read_content", "update_content", "insert_content"), "NOTION_CLIENT_ID", "NOTION_CLIENT_SECRET"),
     "twitter": ToolDefinition("twitter", "X / Twitter", "https://x.com/i/oauth2/authorize", "https://api.x.com/2/oauth2/token", ("tweet.read", "tweet.write", "users.read", "offline.access"), "TWITTER_CLIENT_ID", pkce=True),
-    "linkedin": ToolDefinition("linkedin", "LinkedIn", "https://www.linkedin.com/oauth/v2/authorization", "https://www.linkedin.com/oauth/v2/accessToken", ("w_member_social", "r_liteprofile", "r_organization_social"), "LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET"),
-    "facebook": ToolDefinition("facebook", "Facebook Pages", "https://www.facebook.com/v22.0/dialog/oauth", "https://graph.facebook.com/v22.0/oauth/access_token", ("pages_manage_posts", "pages_read_engagement", "public_profile"), "FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET"),
+    "linkedin": ToolDefinition("linkedin", "LinkedIn", "https://www.linkedin.com/oauth/v2/authorization", "https://www.linkedin.com/oauth/v2/accessToken", ("openid", "profile", "w_member_social", "r_organization_social"), "LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET"),
+    "facebook": ToolDefinition("facebook", "Facebook Pages", "https://www.facebook.com/v22.0/dialog/oauth", "https://graph.facebook.com/v22.0/oauth/access_token", ("pages_show_list", "pages_manage_posts", "pages_read_engagement", "public_profile"), "FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET"),
     "whatsapp": ToolDefinition("whatsapp", "WhatsApp Business", "", "", (), "WHATSAPP_ACCESS_TOKEN", required_envs=("WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID"), oauth=False),
 }
 
